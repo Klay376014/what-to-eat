@@ -1,0 +1,7 @@
+# GitHub Pages (Jekyll) config. Pages serves this folder so Google's OAuth
+# consent screen has a homepage and privacy policy on a domain we control.
+title: What to Eat
+description: Propose, vote on, and decide restaurants for every meal of a trip.
+exclude:
+  - agents
+  - adr

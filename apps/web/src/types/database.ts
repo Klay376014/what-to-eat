@@ -8,166 +8,96 @@ export type Database = {
   };
   public: {
     Tables: {
-      decisions: {
+      trip_members: {
         Row: {
-          calendar_event_id: string | null;
-          decided_at: string;
-          decided_by: string;
-          meal_id: string;
-          proposal_id: string;
-        };
-        Insert: {
-          calendar_event_id?: string | null;
-          decided_at?: string;
-          decided_by: string;
-          meal_id: string;
-          proposal_id: string;
-        };
-        Update: {
-          calendar_event_id?: string | null;
-          decided_at?: string;
-          decided_by?: string;
-          meal_id?: string;
-          proposal_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "decisions_meal_id_fkey";
-            columns: ["meal_id"];
-            isOneToOne: true;
-            referencedRelation: "meals";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "decisions_proposal_id_meal_id_fkey";
-            columns: ["proposal_id", "meal_id"];
-            isOneToOne: false;
-            referencedRelation: "proposals";
-            referencedColumns: ["id", "meal_id"];
-          },
-        ];
-      };
-      meals: {
-        Row: {
-          created_at: string;
-          created_by: string;
-          id: string;
-          meal_date: string;
-          slot: Database["public"]["Enums"]["meal_slot"];
-        };
-        Insert: {
-          created_at?: string;
-          created_by: string;
-          id?: string;
-          meal_date: string;
-          slot: Database["public"]["Enums"]["meal_slot"];
-        };
-        Update: {
-          created_at?: string;
-          created_by?: string;
-          id?: string;
-          meal_date?: string;
-          slot?: Database["public"]["Enums"]["meal_slot"];
-        };
-        Relationships: [];
-      };
-      members: {
-        Row: {
-          created_at: string;
-          display_name: string;
+          joined_at: string;
+          left_at: string | null;
+          role: Database["public"]["Enums"]["trip_role"];
+          trip_id: string;
           user_id: string;
         };
         Insert: {
-          created_at?: string;
-          display_name: string;
+          joined_at?: string;
+          left_at?: string | null;
+          role?: Database["public"]["Enums"]["trip_role"];
+          trip_id: string;
           user_id: string;
         };
         Update: {
-          created_at?: string;
-          display_name?: string;
+          joined_at?: string;
+          left_at?: string | null;
+          role?: Database["public"]["Enums"]["trip_role"];
+          trip_id?: string;
           user_id?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "trip_members_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          },
+        ];
       };
-      proposals: {
+      trips: {
         Row: {
           created_at: string;
+          end_date: string | null;
           id: string;
-          meal_id: string;
-          note: string | null;
-          place_id: string | null;
-          place_name: string;
-          place_url: string | null;
-          proposed_by: string;
+          name: string;
+          start_date: string | null;
+          timezone: string;
         };
         Insert: {
           created_at?: string;
+          end_date?: string | null;
           id?: string;
-          meal_id: string;
-          note?: string | null;
-          place_id?: string | null;
-          place_name: string;
-          place_url?: string | null;
-          proposed_by: string;
+          name: string;
+          start_date?: string | null;
+          timezone: string;
         };
         Update: {
           created_at?: string;
+          end_date?: string | null;
           id?: string;
-          meal_id?: string;
-          note?: string | null;
-          place_id?: string | null;
-          place_name?: string;
-          place_url?: string | null;
-          proposed_by?: string;
+          name?: string;
+          start_date?: string | null;
+          timezone?: string;
         };
-        Relationships: [
-          {
-            foreignKeyName: "proposals_meal_id_fkey";
-            columns: ["meal_id"];
-            isOneToOne: false;
-            referencedRelation: "meals";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      votes: {
-        Row: {
-          created_at: string;
-          proposal_id: string;
-          user_id: string;
-          value: number;
-        };
-        Insert: {
-          created_at?: string;
-          proposal_id: string;
-          user_id: string;
-          value: number;
-        };
-        Update: {
-          created_at?: string;
-          proposal_id?: string;
-          user_id?: string;
-          value?: number;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "votes_proposal_id_fkey";
-            columns: ["proposal_id"];
-            isOneToOne: false;
-            referencedRelation: "proposals";
-            referencedColumns: ["id"];
-          },
-        ];
+        Relationships: [];
       };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
-      is_member: { Args: never; Returns: boolean };
+      create_trip: {
+        Args: {
+          end_date?: string;
+          name: string;
+          start_date?: string;
+          timezone: string;
+        };
+        Returns: {
+          created_at: string;
+          end_date: string | null;
+          id: string;
+          name: string;
+          start_date: string | null;
+          timezone: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "trips";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      keepalive: { Args: never; Returns: number };
     };
     Enums: {
-      meal_slot: "lunch" | "dinner";
+      trip_role: "organiser" | "member";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -293,7 +223,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      meal_slot: ["lunch", "dinner"],
+      trip_role: ["organiser", "member"],
     },
   },
 } as const;

@@ -33,15 +33,16 @@ Node ≥ 22.6. From the repo root:
 ```sh
 export GOOGLE_CLIENT_ID=...
 export GOOGLE_CLIENT_SECRET=...
-S="node --experimental-strip-types spikes/calendar-delivery/spike.ts"
+# An alias, not S="...": zsh does not word-split $S, so "$S auth" fails.
+alias S='node --experimental-strip-types spikes/calendar-delivery/spike.ts'
 
-$S auth                        # open the URL as account A; screenshot every screen
-$S refresh                     # proves the refresh token actually works
-$S calendar                    # creates the secondary calendar "Spike: Tokyo trip"
-$S event accountB@gmail.com    # now look at account B's calendar — do NOT click the email
-$S update                      # rename + move to 20:00; look for a duplicate in B
-$S delete                      # look that it is gone from B
-$S cleanup                     # deletes the secondary calendar
+S auth                        # open the URL as account A; screenshot every screen
+S refresh                     # proves the refresh token actually works
+S calendar                    # creates the secondary calendar "Spike: Tokyo trip"
+S event accountB@gmail.com    # now look at account B's calendar — do NOT click the email
+S update                      # rename + move to 20:00; look for a duplicate in B
+S delete                      # look that it is gone from B
+S cleanup                     # deletes the secondary calendar
 ```
 
 Tokens and ids are kept in `.spike-state.json` beside the script, which is

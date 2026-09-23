@@ -5,7 +5,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(31);
+select plan(33);
 
 -- The abandoned global allowlist is gone -------------------------------------
 
@@ -52,12 +52,12 @@ select col_is_pk(
 -- through itself; the empty search_path is what makes that safe.
 
 select is_definer(
-  'private', 'is_trip_member', array['uuid'],
-  'is_trip_member() is security definer'
+  'private', 'my_trip_ids', array[]::text[],
+  'my_trip_ids() is security definer'
 );
 select is_definer(
-  'private', 'is_trip_organiser', array['uuid'],
-  'is_trip_organiser() is security definer'
+  'private', 'my_organiser_trip_ids', array[]::text[],
+  'my_organiser_trip_ids() is security definer'
 );
 select is_empty(
   $$ select p.proname from pg_proc p
@@ -65,6 +65,24 @@ select is_empty(
        and p.prosecdef
        and not ('search_path=""' = any (coalesce(p.proconfig, '{}'))) $$,
   'every security definer function pins an empty search_path'
+);
+
+-- Policies ask for the caller's trips once per statement, as a set, rather
+-- than calling a predicate with each row's trip id. A private function called
+-- with an argument in a policy is that per-row pattern.
+select is_empty(
+  $$ select policyname from pg_policies
+     where schemaname = 'public'
+       and coalesce(qual, '') || ' ' || coalesce(with_check, '')
+           ~ 'private\.[a-z_]+\([^)]' $$,
+  'no policy calls a membership predicate once per row'
+);
+select cmp_ok(
+  (select count(*) from pg_policies
+   where schemaname = 'public'
+     and coalesce(qual, '') || ' ' || coalesce(with_check, '') ~ 'private\.my_'),
+  '=', 4::bigint,
+  'every trips and trip_members policy asks the set-returning helpers'
 );
 
 -- Row level security everywhere -------------------------------------------
@@ -146,9 +164,11 @@ select table_privs_are(
   'public', 'trip_members', 'authenticated', array['SELECT'],
   'authenticated may only read trip_members, subject to RLS'
 );
+-- Policies store their functions by OID and Postgres checks only EXECUTE
+-- when they run, so no role needs to look names up in `private`.
 select schema_privs_are(
-  'private', 'authenticated', array['USAGE'],
-  'authenticated can reach the private predicates its policies call'
+  'private', 'authenticated', array[]::text[],
+  'authenticated cannot call the private helpers by name'
 );
 select function_privs_are(
   'public', 'create_trip', array['text', 'text', 'date', 'date'],

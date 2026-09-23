@@ -245,7 +245,7 @@ select throws_ok(
   'an unauthenticated caller cannot create a trip'
 );
 select throws_ok(
-  $$ select private.is_trip_member('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') $$,
+  $$ select private.my_trip_ids() $$,
   '42501', null,
   'an unauthenticated caller cannot probe membership'
 );

@@ -10,7 +10,10 @@ create extension if not exists pgtap with schema extensions;
 select plan(2);
 
 select has_schema('public', 'public schema exists');
-select ok(false, 'deliberate failure');
+select ok(
+  (select count(*) from supabase_migrations.schema_migrations) > 0,
+  'migrations have been applied'
+);
 
 select * from finish();
 

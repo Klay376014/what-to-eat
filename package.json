@@ -1,0 +1,28 @@
+{
+  "name": "what-to-eat",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ready": "vp check && vp run -r test && vp run -r build",
+    "dev": "vp run web#dev",
+    "prepare": "vp config",
+    "db:push": "supabase db push",
+    "db:types": "supabase gen types typescript --linked --schema public > apps/web/src/types/database.ts"
+  },
+  "devDependencies": {
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.5.1",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "packageManager": "pnpm@12.5.1"
+}

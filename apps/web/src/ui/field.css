@@ -1,0 +1,42 @@
+/* Shared by TextField and SelectField. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+label {
+  font-weight: var(--label-weight);
+}
+
+.control {
+  min-height: 48px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  color: var(--text);
+  border: var(--control-border-width) solid var(--border-strong);
+  border-radius: var(--radius-control);
+}
+
+.control:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.control[aria-invalid="true"] {
+  border-color: var(--danger-text);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.field-error {
+  color: var(--danger-text);
+  font-size: var(--text-sm);
+  font-weight: var(--label-weight);
+}

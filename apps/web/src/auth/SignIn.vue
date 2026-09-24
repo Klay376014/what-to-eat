@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { errorMessage } from "../lib/errors.ts";
+import BaseButton from "../ui/BaseButton.vue";
+import BaseCard from "../ui/BaseCard.vue";
 
 const props = defineProps<{ signIn: () => Promise<void> }>();
 
@@ -20,21 +22,25 @@ async function start() {
 </script>
 
 <template>
-  <section class="sign-in stack">
+  <BaseCard class="sign-in">
     <h1>今天吃什麼</h1>
     <p>
       Propose restaurants for each meal of a trip, vote on them with the people you're travelling
       with, and put what you decide on everyone's calendar.
     </p>
     <div>
-      <button type="button" class="primary" :disabled="busy" @click="start">
-        Sign in with Google
-      </button>
+      <BaseButton variant="primary" :disabled="busy" @click="start">Sign in with Google</BaseButton>
     </div>
     <p class="hint">
       Only your name, email address and profile picture are shared with the app.
       <a href="https://klay376014.github.io/what-to-eat/privacy">Privacy policy</a>
     </p>
     <p v-if="failure" role="alert" class="error">{{ failure }}</p>
-  </section>
+  </BaseCard>
 </template>
+
+<style scoped>
+.sign-in {
+  margin-top: calc(var(--space-6) * 2);
+}
+</style>

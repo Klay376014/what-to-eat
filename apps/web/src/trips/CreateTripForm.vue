@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { errorMessage } from "../lib/errors.ts";
+import BaseButton from "../ui/BaseButton.vue";
+import BaseCard from "../ui/BaseCard.vue";
 import type { Trip, TripSettings } from "./trip.ts";
 import TripFields from "./TripFields.vue";
 import { defaultTimeZone, validateTripSettings, type TripSettingsErrors } from "./tripSettings.ts";
@@ -37,15 +39,15 @@ async function submit() {
 </script>
 
 <template>
-  <form class="stack" novalidate @submit.prevent="submit">
+  <BaseCard as="form" novalidate @submit.prevent="submit">
     <h2>New trip</h2>
     <TripFields :model-value="settings" :errors="errors" />
     <p v-if="failure" role="alert" class="error">{{ failure }}</p>
     <div class="actions">
-      <button type="submit" class="primary" :disabled="saving">
+      <BaseButton type="submit" variant="primary" :disabled="saving">
         {{ saving ? "Creating…" : "Create trip" }}
-      </button>
-      <button v-if="cancellable" type="button" @click="emit('cancel')">Cancel</button>
+      </BaseButton>
+      <BaseButton v-if="cancellable" @click="emit('cancel')">Cancel</BaseButton>
     </div>
-  </form>
+  </BaseCard>
 </template>

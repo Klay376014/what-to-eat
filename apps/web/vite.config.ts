@@ -9,5 +9,7 @@ export default defineConfig({
     environment: "happy-dom",
     include: ["src/**/*.test.ts"],
     setupFiles: ["src/test/setup.ts"],
+    // tokens.test.ts reads the token file itself; other CSS stays skipped.
+    css: { include: [/src\/styles\/tokens\.css/] },
   },
 });

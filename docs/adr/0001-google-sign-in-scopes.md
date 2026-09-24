@@ -39,12 +39,13 @@ kept true in three places:
 the app does, stops at the redirect to Google, and fails if the `scope` it
 would request contains anything outside `openid email profile`.
 
-| Date       | Checked by | What                                                                                                                | Result                                                                                            |
-| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 2026-09-24 | agent (#5) | Supabase Auth source, `google.go` at `5e372a9`                                                                      | Default scopes are `email profile`; extras come only from the client's `scopes`                   |
-| 2026-09-24 | agent (#5) | App sign-in URL (`auth.test.ts`)                                                                                    | No `scopes` and no other pass-through parameter                                                   |
-| 2026-09-24 | agent (#5) | `vp run auth:check-scopes` against the hosted project                                                               | Not run: the Google provider is not enabled on the hosted project yet (`provider is not enabled`) |
-| TODO       | maintainer | `vp run auth:check-scopes` once the provider is enabled, plus the consent screen's Data Access list in Google Cloud |                                                                                                   |
+| Date       | Checked by | What                                                                        | Result                                                                                            |
+| ---------- | ---------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 2026-09-24 | agent (#5) | Supabase Auth source, `google.go` at `5e372a9`                              | Default scopes are `email profile`; extras come only from the client's `scopes`                   |
+| 2026-09-24 | agent (#5) | App sign-in URL (`auth.test.ts`)                                            | No `scopes` and no other pass-through parameter                                                   |
+| 2026-09-24 | agent (#5) | `vp run auth:check-scopes` against the hosted project                       | Not run: the Google provider is not enabled on the hosted project yet (`provider is not enabled`) |
+| 2026-09-24 | agent (#5) | `vp run auth:check-scopes` against the hosted project, provider now enabled | Redirects to `accounts.google.com` with `scope=email profile`: OK                                 |
+| TODO       | maintainer | The consent screen's Data Access list in Google Cloud                       |                                                                                                   |
 
 Run the check again, and add a row, whenever the Google provider, its OAuth
 client or the consent screen changes.

@@ -1,7 +1,0 @@
-{
-  "extends": "./tsconfig.app.json",
-  "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.prototypes.tsbuildinfo"
-  },
-  "include": ["prototypes/**/*.ts", "prototypes/**/*.vue", "vue-shims.d.ts"]
-}

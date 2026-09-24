@@ -14,5 +14,21 @@ export default defineConfig({
   },
   run: {
     cache: true,
+    // These read or write the hosted Supabase project, which Vite Task cannot
+    // see. Cached, a replay would report a stale schema or skip a migration
+    // push as if it had run, so each one always executes.
+    tasks: {
+      "db:push": { command: "supabase db push", cache: false },
+      "db:types": {
+        command:
+          "supabase gen types typescript --linked --schema public > apps/web/src/types/database.ts",
+        cache: false,
+      },
+      "auth:check-scopes": {
+        command:
+          "node --experimental-strip-types --env-file-if-exists=apps/web/.env scripts/check-google-scopes.ts",
+        cache: false,
+      },
+    },
   },
 });

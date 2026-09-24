@@ -37,6 +37,9 @@ defineProps<{ slot: MealSlotState }>();
 
 <style scoped>
 .marker {
+  /* Contains the visually hidden state prefix, so it cannot escape a
+     scrolling container (such as a sideways-scrolling grid) and widen the page. */
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);

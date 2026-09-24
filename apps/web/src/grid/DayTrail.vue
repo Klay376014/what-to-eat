@@ -6,13 +6,15 @@
  * The pin is decoration; each meal's MealSlotMarker carries its state.
  *
  * Each meal's button opens its details below it. A breakfast, lunch or
- * dinner nobody has added yet is offered for adding there, and an "other"
- * meal can be renamed there; "Add another meal" adds an "other" meal with
+ * dinner nobody has added yet is offered for adding there; a meal that
+ * exists lists its proposals there and takes new ones (#8), and an "other"
+ * meal can be renamed there. "Add another meal" adds an "other" meal with
  * its own name.
  */
 import { nextTick, ref, useId, useTemplateRef, watch } from "vue";
 import { errorMessage } from "../lib/errors.ts";
 import type { IsoDate } from "../trips/trip.ts";
+import MealProposals from "../proposals/MealProposals.vue";
 import BaseButton from "../ui/BaseButton.vue";
 import BaseIcon from "../ui/BaseIcon.vue";
 import MealSlotMarker from "../ui/MealSlotMarker.vue";
@@ -35,6 +37,12 @@ const props = defineProps<{
   trail: readonly TrailEntry[];
   add: AddMeal;
   rename: RenameMeal;
+  /** The trip's timezone, for when each proposal was made. */
+  timeZone: string;
+}>();
+const emit = defineEmits<{
+  /** A meal's proposal count, as its details last loaded or changed it. */
+  proposalCount: [mealId: string, count: number];
 }>();
 
 const id = useId();
@@ -199,16 +207,9 @@ async function submitOther() {
             </BaseButton>
           </div>
         </template>
-        <!-- TODO(#8): the meal's proposals, and proposing a restaurant, go here. -->
-        <p v-else-if="entry.state.state === 'empty'">
-          {{ entry.name }} is open for proposals. Nobody has proposed a restaurant yet.
+        <p v-else-if="entry.state.state === 'decided'">
+          {{ entry.name }} is decided: {{ entry.state.restaurant }}.
         </p>
-        <p v-else-if="entry.state.state === 'discussing'">
-          {{ entry.state.proposals }}
-          {{ entry.state.proposals === 1 ? "restaurant is" : "restaurants are" }} being discussed
-          for {{ entry.name.toLowerCase() }}.
-        </p>
-        <p v-else>{{ entry.name }} is decided: {{ entry.state.restaurant }}.</p>
 
         <!-- Only an "other" meal has a name of its own to change. -->
         <template v-if="entry.meal !== null && entry.slot === 'other'">
@@ -238,6 +239,16 @@ async function submitOther() {
             </BaseButton>
           </div>
         </template>
+
+        <!-- The restaurants proposed for it, and proposing another (#8). -->
+        <MealProposals
+          v-if="entry.meal !== null"
+          :key="entry.meal.id"
+          :meal-id="entry.meal.id"
+          :meal-name="entry.name"
+          :time-zone="timeZone"
+          @count="(count) => emit('proposalCount', entry.meal!.id, count)"
+        />
 
         <p v-if="notice" role="status">{{ notice }}</p>
         <p v-if="failure" role="alert" class="error">{{ failure }}</p>

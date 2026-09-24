@@ -45,9 +45,16 @@ type Client = SupabaseClient<Database>;
 type MealRow = Pick<
   Database["public"]["Tables"]["meals"]["Row"],
   "id" | "trip_id" | "date" | "slot" | "label" | "position"
->;
+> & {
+  /** PostgREST's embedded count: one row, `[{ count }]`. */
+  proposals: { count: number }[];
+};
 
-const MEAL_COLUMNS = "id, trip_id, date, slot, label, position";
+/**
+ * The meal and how many proposals it has, counted by the database under the
+ * proposals policies, so it is the count the caller may see.
+ */
+const MEAL_COLUMNS = "id, trip_id, date, slot, label, position, proposals(count)";
 /** Postgres unique_violation: the one-breakfast-lunch-dinner-a-day index. */
 const UNIQUE_VIOLATION = "23505";
 
@@ -59,8 +66,7 @@ function toMeal(row: MealRow): Meal {
     slot: row.slot,
     label: row.label,
     position: row.position,
-    // TODO(#8): count the meal's proposals once they exist.
-    proposals: 0,
+    proposals: row.proposals[0]?.count ?? 0,
     // TODO(#9): the decided restaurant's name once decisions exist.
     decidedRestaurant: null,
   };

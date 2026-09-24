@@ -5,7 +5,13 @@
 import { flushPromises, mount, type DOMWrapper, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { aMeal, createFakeMealsApi, type FakeMealsApi } from "../test/fakeMealsApi.ts";
+import {
+  aProposal,
+  createFakeProposalsApi,
+  type FakeProposalsApi,
+} from "../test/fakeProposalsApi.ts";
 import { aTrip } from "../test/fakeTripsApi.ts";
+import { proposalsApiKey } from "../proposals/proposalsApi.ts";
 import { buttonByText, fieldByLabel } from "../test/dom.ts";
 import type { Trip } from "../trips/trip.ts";
 import { mealsApiKey } from "./mealsApi.ts";
@@ -32,10 +38,16 @@ const tokyo = aTrip({
 });
 const everyday = aTrip({ id: "home", name: "Everyday", timezone: "Asia/Taipei" });
 
-async function mountGrid(trip: Trip, api: FakeMealsApi = createFakeMealsApi()) {
+async function mountGrid(
+  trip: Trip,
+  api: FakeMealsApi = createFakeMealsApi(),
+  proposals: FakeProposalsApi = createFakeProposalsApi(),
+) {
   const wrapper = mount(TripGrid, {
     props: { trip },
-    global: { provide: { [mealsApiKey as symbol]: api } },
+    global: {
+      provide: { [mealsApiKey as symbol]: api, [proposalsApiKey as symbol]: proposals },
+    },
     attachTo: document.body,
   });
   await flushPromises();
@@ -341,7 +353,7 @@ describe("adding meals", () => {
     await buttonByText(wrapper, "Start planning lunch").trigger("click");
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Lunch is open for proposals.");
+    expect(wrapper.text()).toContain("Nobody has proposed a restaurant for lunch yet.");
     expect((await api.listMeals("tokyo")).map((m) => [m.date, m.slot])).toEqual([
       ["2026-10-01", "lunch"],
     ]);
@@ -354,8 +366,9 @@ describe("adding meals", () => {
     const wrapper = await mountGrid(tokyo, api);
 
     await slotButton(wrapper, "Lunch").trigger("click");
+    await flushPromises();
 
-    expect(wrapper.text()).toContain("Lunch is open for proposals.");
+    expect(wrapper.text()).toContain("Nobody has proposed a restaurant for lunch yet.");
     expect(wrapper.text()).not.toContain("Start planning lunch");
   });
 
@@ -384,11 +397,16 @@ describe("adding meals", () => {
 
   test("a second lunch is refused, and the one someone else added first is shown", async () => {
     const api = createFakeMealsApi();
-    const wrapper = await mountGrid(tokyo, api);
+    const proposals = createFakeProposalsApi();
+    const wrapper = await mountGrid(tokyo, api, proposals);
     await slotButton(wrapper, "Lunch").trigger("click");
 
-    // Another member adds lunch while this screen still shows none.
-    api.seed(aMeal({ tripId: "tokyo", date: "2026-10-01", slot: "lunch", proposals: 2 }));
+    // Another member adds lunch, and two proposals, while this screen still shows none.
+    api.seed(
+      aMeal({ id: "theirs", tripId: "tokyo", date: "2026-10-01", slot: "lunch", proposals: 2 }),
+    );
+    proposals.seed(aProposal({ mealId: "theirs", placeName: "Tsuta" }));
+    proposals.seed(aProposal({ mealId: "theirs", placeName: "Ichiran" }));
     await buttonByText(wrapper, "Start planning lunch").trigger("click");
     await flushPromises();
 
@@ -524,9 +542,63 @@ describe("renaming an other meal", () => {
     const wrapper = await mountGrid(tokyo, api);
 
     await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
 
-    expect(wrapper.text()).toContain("Dinner is open for proposals.");
+    expect(wrapper.text()).toContain("Nobody has proposed a restaurant for dinner yet.");
     expect(() => buttonByText(wrapper, "Rename")).toThrow();
+  });
+});
+
+describe("proposing from the grid", () => {
+  test("a proposal made in a meal's details shows on its marker and in the day's summary", async () => {
+    const api = createFakeMealsApi({
+      meals: [aMeal({ id: "lunch-1", tripId: "tokyo", date: "2026-10-01", slot: "lunch" })],
+    });
+    const wrapper = await mountGrid(tokyo, api);
+    expect(tabTexts(wrapper)[0]).toBe("Thu 1 Oct 3 gaps");
+
+    await slotButton(wrapper, "Lunch").trigger("click");
+    await flushPromises();
+    await buttonByText(wrapper, "Propose a restaurant").trigger("click");
+    await fieldByLabel(wrapper, "Restaurant name").setValue("Afuri Ramen Ebisu");
+    await panel(wrapper).get("form").trigger("submit");
+    await flushPromises();
+
+    expect(trail(wrapper)[1]).toBe("Lunch Being discussed: 1 proposal");
+    expect(tabTexts(wrapper)[0]).toBe("Thu 1 Oct 2 gaps");
+    expect(panel(wrapper).text()).toContain("Afuri Ramen Ebisu");
+  });
+
+  test("opening a meal catches its marker up with proposals others made since", async () => {
+    const api = createFakeMealsApi({
+      meals: [aMeal({ id: "dinner-1", tripId: "tokyo", date: "2026-10-01", slot: "dinner" })],
+    });
+    const proposals = createFakeProposalsApi();
+    const wrapper = await mountGrid(tokyo, api, proposals);
+    proposals.seed(aProposal({ mealId: "dinner-1", placeName: "Tsuta" }));
+    proposals.seed(aProposal({ mealId: "dinner-1", placeName: "Ichiran" }));
+
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    expect(trail(wrapper)[2]).toBe("Dinner Being discussed: 2 proposals");
+  });
+
+  test("shows when a proposal was made on the trip's clock", async () => {
+    const api = createFakeMealsApi({
+      meals: [aMeal({ id: "dinner-1", tripId: "tokyo", date: "2026-10-01", slot: "dinner" })],
+    });
+    const proposals = createFakeProposalsApi({
+      proposals: [
+        aProposal({ mealId: "dinner-1", placeName: "Tsuta", createdAt: "2026-09-21T23:15:00Z" }),
+      ],
+    });
+    const wrapper = await mountGrid(tokyo, api, proposals);
+
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    expect(panel(wrapper).text()).toContain("Tue 22 Sep, 08:15");
   });
 });
 

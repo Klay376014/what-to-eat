@@ -27,7 +27,7 @@ function notVoted(p: Proposal): string[] {
 </script>
 
 <template>
-  <div class="stack">
+  <div class="stack proposal-list">
     <header class="stack-sm">
       <div class="row-start">
         <button type="button" class="btn btn-icon" aria-label="Back to the trip">

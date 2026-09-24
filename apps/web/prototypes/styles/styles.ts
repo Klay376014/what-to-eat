@@ -88,8 +88,115 @@ export interface CommonTokens {
   transition: string;
 }
 
+/**
+ * Optional motif tokens, added in round 2 (travel direction). Each defaults to
+ * "off" in motifDefaults, so round-1 styles render exactly as before.
+ */
+export interface MotifCommon {
+  /** Display face for page, section and day titles (handwriting, poster). */
+  "font-accent": string;
+  "accent-scale": string;
+  "accent-weight": string;
+  "body-weight": string;
+  "page-texture": string;
+  "page-texture-size": string;
+  "page-texture-position": string;
+  "card-texture": string;
+  "card-texture-size": string;
+  /** Percentage of texture-ink used in textures; the audit blends at this. */
+  "texture-pct": string;
+  "tape-display": string;
+  "card-top-band": string;
+  "card-spine": string;
+  "day-title-padding": string;
+  "day-title-margin": string;
+  "day-title-radius": string;
+  "day-title-align": string;
+  "day-badge-padding": string;
+  "day-badge-radius": string;
+  "decided-rotate": string;
+  "decided-outline-width": string;
+  "ticket-mask": string;
+  "icon-divider-width": string;
+  "icon-divider-gap": string;
+  "stamp-ring-width": string;
+  "stamp-radius": string;
+  "stamp-rotate": string;
+  "route-display": string;
+  "route-pad": string;
+  "route-dot-size": string;
+  "route-dot-radius": string;
+  "route-dot-rotate": string;
+  "entry-number-display": string;
+}
+
+export interface MotifMode {
+  "texture-ink": string;
+  "tape-bg": string;
+  corner: string;
+  accent: string;
+  "on-accent": string;
+  route: string;
+  stamp: string;
+  "decided-icon": string;
+  "day-title-bg": string;
+  "day-title-fg": string;
+  "day-badge-bg": string;
+  "day-badge-fg": string;
+}
+
+export const motifDefaults: MotifCommon & MotifMode = {
+  "font-accent": "var(--font-heading)",
+  "accent-scale": "1",
+  "accent-weight": "var(--heading-weight)",
+  "body-weight": "400",
+  "page-texture": "none",
+  "page-texture-size": "auto",
+  "page-texture-position": "0 0",
+  "card-texture": "none",
+  "card-texture-size": "auto",
+  "texture-pct": "0%",
+  "tape-display": "none",
+  "card-top-band": "0px",
+  "card-spine": "0px",
+  "day-title-padding": "0",
+  "day-title-margin": "0",
+  "day-title-radius": "0",
+  "day-title-align": "stretch",
+  "day-badge-padding": "0",
+  "day-badge-radius": "0",
+  "decided-rotate": "0deg",
+  "decided-outline-width": "0px",
+  "ticket-mask": "none",
+  "icon-divider-width": "0px",
+  "icon-divider-gap": "0px",
+  "stamp-ring-width": "0px",
+  "stamp-radius": "0",
+  "stamp-rotate": "0deg",
+  "route-display": "none",
+  "route-pad": "0px",
+  "route-dot-size": "12px",
+  "route-dot-radius": "50%",
+  "route-dot-rotate": "0deg",
+  "entry-number-display": "none",
+  "texture-ink": "#000000",
+  "tape-bg": "transparent",
+  corner: "transparent",
+  accent: "var(--primary)",
+  "on-accent": "var(--on-primary)",
+  route: "var(--border-strong)",
+  stamp: "var(--decided-fg)",
+  "decided-icon": "var(--decided-fg)",
+  "day-title-bg": "transparent",
+  "day-title-fg": "var(--text)",
+  "day-badge-bg": "transparent",
+  "day-badge-fg": "var(--muted)",
+};
+
 export interface Rationale {
   mood: string;
+  /** Where the travel motif and sunlight legibility pull apart, and the fix. */
+  sun?: string;
   why: string[];
   tradeoffs: string[];
   /** ui-ux-pro-max entries this style was built from. */
@@ -99,9 +206,10 @@ export interface Rationale {
 export interface StyleDefinition {
   id: string;
   name: string;
-  common: CommonTokens;
-  light: ModeTokens;
-  dark: ModeTokens;
+  round: 1 | 2;
+  common: CommonTokens & Partial<MotifCommon>;
+  light: ModeTokens & Partial<MotifMode>;
+  dark: ModeTokens & Partial<MotifMode>;
   rationale: Rationale;
 }
 
@@ -123,15 +231,17 @@ const spacing8 = {
 };
 
 const noShadows = {
-  "shadow-card": "none",
+  // Not "none": gallery.css layers motif bands onto this shadow list.
+  "shadow-card": "0 0 transparent",
   "shadow-button": "none",
   "shadow-dialog": "0 12px 32px rgb(0 0 0 / 0.25)",
 };
 
-export const styles: StyleDefinition[] = [
+export const roundOne: StyleDefinition[] = [
   {
     id: "swiss-signal",
     name: "Swiss Signal",
+    round: 1,
     common: {
       "font-heading": '"Inter", system-ui, sans-serif',
       "font-body": '"Inter", system-ui, sans-serif',
@@ -253,6 +363,7 @@ export const styles: StyleDefinition[] = [
   {
     id: "street-brutal",
     name: "Street Brutal",
+    round: 1,
     common: {
       "font-heading": '"Lexend Mega", system-ui, sans-serif',
       "font-body": '"Public Sans", system-ui, sans-serif',
@@ -379,6 +490,7 @@ export const styles: StyleDefinition[] = [
   {
     id: "soft-clay",
     name: "Soft Clay",
+    round: 1,
     common: {
       "font-heading": '"Varela Round", system-ui, sans-serif',
       "font-body": '"Nunito Sans", system-ui, sans-serif',
@@ -508,6 +620,7 @@ export const styles: StyleDefinition[] = [
   {
     id: "menu-card",
     name: "Menu Card",
+    round: 1,
     common: {
       "font-heading": '"Playfair Display SC", Georgia, serif',
       "font-body": '"Karla", system-ui, sans-serif',
@@ -630,6 +743,7 @@ export const styles: StyleDefinition[] = [
   {
     id: "material-tonal",
     name: "Material Tonal",
+    round: 1,
     common: {
       "font-heading": '"Roboto", system-ui, sans-serif',
       "font-body": '"Roboto", system-ui, sans-serif',
@@ -756,6 +870,7 @@ export const styles: StyleDefinition[] = [
   {
     id: "sunlight-max",
     name: "Sunlight Max",
+    round: 1,
     common: {
       "font-heading": '"Lexend", system-ui, sans-serif',
       "font-body": '"Atkinson Hyperlegible", system-ui, sans-serif',
@@ -882,9 +997,14 @@ export const styles: StyleDefinition[] = [
   },
 ];
 
+/** Every token for one style and mode, motif defaults filled in, without "--". */
+export function resolvedTokens(style: StyleDefinition, mode: Mode): Record<string, string> {
+  return { ...motifDefaults, ...style.common, ...style[mode] };
+}
+
 export function cssVariables(style: StyleDefinition, mode: Mode): Record<string, string> {
   const vars: Record<string, string> = {};
-  for (const [key, value] of Object.entries({ ...style.common, ...style[mode] })) {
+  for (const [key, value] of Object.entries(resolvedTokens(style, mode))) {
     vars[`--${key}`] = value;
   }
   return vars;

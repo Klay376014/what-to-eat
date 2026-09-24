@@ -5,14 +5,17 @@ import { audit } from "./contrast.ts";
 import EmptyTrips from "./EmptyTrips.vue";
 import Icon from "./Icon.vue";
 import ProposalList from "./ProposalList.vue";
-import { cssVariables, styles, type Mode } from "./styles.ts";
+import { catalog, groups } from "./catalog.ts";
+import { cssVariables, resolvedTokens, type Mode } from "./styles.ts";
 import TripGrid from "./TripGrid.vue";
 
 const params = new URLSearchParams(location.search);
-const initialIndex = styles.findIndex((s) => s.id === params.get("style"));
+const initialIndex = catalog.findIndex((s) => s.id === params.get("style"));
+// Round 2 opens on its reference, Menu Card, so stepping forward compares.
+const defaultIndex = catalog.findIndex((s) => s.id === "menu-card");
 const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
 
-const index = ref(initialIndex >= 0 ? initialIndex : 0);
+const index = ref(initialIndex >= 0 ? initialIndex : defaultIndex);
 const mode = ref<Mode>(
   params.get("mode") === "dark" || params.get("mode") === "light"
     ? (params.get("mode") as Mode)
@@ -21,12 +24,12 @@ const mode = ref<Mode>(
       : "light",
 );
 
-const style = computed(() => styles[index.value]!);
-const results = computed(() => audit(style.value[mode.value]));
+const style = computed(() => catalog[index.value]!);
+const results = computed(() => audit(resolvedTokens(style.value, mode.value)));
 const failures = computed(() => results.value.filter((r) => !r.pass));
 
 function step(delta: number) {
-  index.value = (index.value + delta + styles.length) % styles.length;
+  index.value = (index.value + delta + catalog.length) % catalog.length;
 }
 
 watchEffect(() => {
@@ -51,7 +54,11 @@ watchEffect(() => {
       </button>
       <label class="visually-hidden" for="style-picker">Style</label>
       <select id="style-picker" v-model="index" class="chrome-select">
-        <option v-for="(s, i) in styles" :key="s.id" :value="i">{{ i + 1 }}. {{ s.name }}</option>
+        <optgroup v-for="group in groups" :key="group.label" :label="group.label">
+          <option v-for="s in group.styles" :key="s.id" :value="catalog.indexOf(s)">
+            {{ s.name }}{{ s.round === 1 && s.id === "menu-card" ? " (round 1)" : "" }}
+          </option>
+        </optgroup>
       </select>
       <button type="button" class="btn btn-icon" aria-label="Next style" @click="step(1)">
         <Icon name="caret-right" />
@@ -70,9 +77,16 @@ watchEffect(() => {
 
   <main class="page stack-lg">
     <section class="card stack-sm" aria-labelledby="style-name">
-      <p class="kicker">Style {{ index + 1 }} of {{ styles.length }} · {{ mode }}</p>
+      <p class="kicker">
+        Round {{ style.round }}{{ style.id === "menu-card" ? ", the reference" : "" }} · style
+        {{ index + 1 }} of {{ catalog.length }} · {{ mode }}
+      </p>
       <h1 id="style-name" class="title-xl">{{ style.name }}</h1>
       <p class="lead">{{ style.rationale.mood }}</p>
+      <template v-if="style.rationale.sun">
+        <h2 class="title-sm">Travel feel versus sunlight</h2>
+        <p>{{ style.rationale.sun }}</p>
+      </template>
       <h2 class="title-sm">Why it suits this app</h2>
       <ul class="bullets">
         <li v-for="line in style.rationale.why" :key="line">{{ line }}</li>
@@ -99,8 +113,8 @@ watchEffect(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in results" :key="`${r.fg}/${r.bg}`">
-              <td>{{ r.fg }} on {{ r.bg }}</td>
+            <tr v-for="r in results" :key="r.label">
+              <td>{{ r.label }}</td>
               <td class="tabular">{{ r.ratio.toFixed(2) }}</td>
               <td class="tabular">{{ r.min }} {{ r.pass ? "pass" : "FAIL" }}</td>
             </tr>

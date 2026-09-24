@@ -14,9 +14,18 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Texture colour: texture-ink at texture-pct, which the contrast audit blends too. */
+:root {
+  --texture-soft: color-mix(in srgb, var(--texture-ink) var(--texture-pct), transparent);
+}
+
 body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--page-texture);
+  background-size: var(--page-texture-size);
+  background-position: var(--page-texture-position);
+  font-weight: var(--body-weight);
   color: var(--text);
   font-family: var(--font-body);
   font-size: var(--text-base);
@@ -182,11 +191,48 @@ strong {
 
 /* Card */
 .card {
-  background: var(--surface);
+  position: relative;
+  background-color: var(--surface);
+  background-image: var(--card-texture);
+  background-size: var(--card-texture-size);
   border: var(--card-border-width) var(--card-border-style) var(--border-strong);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
+  /* Motif bands (poster top band, field-guide spine) ride on the shadow list. */
+  box-shadow:
+    inset 0 var(--card-top-band) 0 0 var(--accent),
+    inset var(--card-spine) 0 0 0 var(--accent),
+    var(--shadow-card);
   padding: var(--space-4);
+}
+
+/* Washi tape across the top of day cards and the empty state. */
+.day::before,
+.empty-state::before {
+  content: "";
+  display: var(--tape-display);
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 96px;
+  height: 22px;
+  transform: translateX(-50%) rotate(-2.5deg);
+  background: var(--tape-bg);
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+/* Page, section and day titles use the accent (display) face. */
+.title-xl,
+.section-title,
+.day-title {
+  font-family: var(--font-accent);
+  font-weight: var(--accent-weight);
+}
+.title-xl {
+  font-size: calc(var(--text-2xl) * var(--accent-scale));
+}
+.section-title {
+  font-size: calc(var(--text-xl) * var(--accent-scale));
 }
 
 /* Buttons */
@@ -370,6 +416,26 @@ select {
   border-style: solid;
   border-color: var(--decided-border);
   font-weight: var(--strong-weight);
+  transform: rotate(var(--decided-rotate));
+  /* Postcard: perforated stamp edge. Boarding pass: notched ticket stub. */
+  outline: var(--decided-outline-width) dashed var(--decided-fg);
+  outline-offset: -6px;
+  -webkit-mask: var(--ticket-mask);
+  mask: var(--ticket-mask);
+}
+.slot--decided:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: 2px;
+}
+.slot--decided > .icon {
+  box-sizing: content-box;
+  color: var(--decided-icon);
+  padding-right: var(--icon-divider-gap);
+  border-right: var(--icon-divider-width) dashed currentColor;
+  /* Washi: a hanko seal ring around the check. */
+  border-radius: var(--stamp-radius);
+  box-shadow: 0 0 0 var(--stamp-ring-width) var(--stamp);
+  transform: rotate(var(--stamp-rotate));
 }
 .slot-text {
   flex: 1 1 6rem;
@@ -409,12 +475,63 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: var(--text-lg);
+  gap: var(--space-3);
+  font-size: calc(var(--text-lg) * var(--accent-scale));
+  align-self: var(--day-title-align);
+  background: var(--day-title-bg);
+  color: var(--day-title-fg);
+  padding: var(--day-title-padding);
+  margin: var(--day-title-margin);
+  border-radius: var(--day-title-radius);
+}
+.day-badge {
+  font-family: var(--font-body);
+  font-weight: var(--label-weight);
+  font-size: var(--text-sm);
+  letter-spacing: 0;
+  text-transform: none;
+  background: var(--day-badge-bg);
+  color: var(--day-badge-fg);
+  padding: var(--day-badge-padding);
+  border-radius: var(--day-badge-radius);
 }
 .slots {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding-left: var(--route-pad);
+}
+/* Route line (boarding pass) or trail of pins (cartographer) down the day. */
+.slots::before {
+  content: "";
+  display: var(--route-display);
+  position: absolute;
+  left: calc(var(--route-dot-size) / 2 - 1px);
+  top: 20px;
+  bottom: 20px;
+  border-left: 2px dashed var(--route);
+}
+.slot-row {
+  position: relative;
+}
+.slot-row::before {
+  content: "";
+  display: var(--route-display);
+  position: absolute;
+  left: calc(-1 * var(--route-pad));
+  top: 50%;
+  width: var(--route-dot-size);
+  height: var(--route-dot-size);
+  margin-top: calc(var(--route-dot-size) / -2);
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 2px solid var(--route);
+  border-radius: var(--route-dot-radius);
+  transform: rotate(var(--route-dot-rotate));
+}
+.slot-row:has(.slot--decided)::before {
+  background: var(--route);
 }
 .slot-row {
   display: grid;
@@ -455,10 +572,31 @@ select {
 }
 
 /* Proposals */
+.proposal-list {
+  counter-reset: entry;
+}
+.proposal {
+  counter-increment: entry;
+}
 .proposal-name {
   font-size: var(--text-lg);
   flex: 1;
   min-width: 0;
+}
+/* Field guide: numbered entries. */
+.proposal-name::before {
+  content: counter(entry);
+  display: var(--entry-number-display);
+  align-items: center;
+  justify-content: center;
+  width: 1.6em;
+  height: 1.6em;
+  margin-right: var(--space-2);
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--text-sm);
+  vertical-align: 0.1em;
 }
 .proposal--decided {
   border-color: var(--decided-border);
@@ -584,5 +722,9 @@ dialog::backdrop {
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
+  }
+  .slot--decided,
+  .btn:active:not(:disabled) {
+    transform: none;
   }
 }

@@ -41,7 +41,7 @@ const decidedCount = computed(() => allSlots.value.filter((s) => s.state === "de
     >
       <h4 :id="`day-${i}`" class="day-title">
         <span>{{ day.weekday }} {{ day.label }}</span>
-        <span class="muted small">Day {{ i + 1 }}</span>
+        <span class="day-badge">Day {{ i + 1 }}</span>
       </h4>
       <dl class="slots">
         <div class="slot-row">

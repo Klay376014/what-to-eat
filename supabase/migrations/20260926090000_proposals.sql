@@ -11,10 +11,12 @@
 --     makes a past decision legible. No role holds DELETE or TRUNCATE, not
 --     even service_role, and there is no DELETE policy. The only way one goes
 --     is with its trip, when the organiser deletes the whole trip.
---   - The name locks once anyone has voted. Otherwise a +1 for a noodle shop
---     could be turned into a +1 for somewhere nobody agreed to. Votes arrive
---     in #10; the lock is `name_locked_at`, set by private.lock_proposal_name()
---     and held by a trigger. See docs/adr/0005-proposal-name-lock.md.
+--   - The name is locked while anyone has a vote on it. Otherwise a +1 for a
+--     noodle shop could be turned into a +1 for somewhere nobody agreed to.
+--     Votes arrive in #10; the lock is `name_locked_at`, set by
+--     private.lock_proposal_name(), cleared only by
+--     private.unlock_proposal_name(), and held by a trigger. See
+--     docs/adr/0005-proposal-name-lock.md.
 --
 -- Any current member reads and adds a meal's proposals, departed members'
 -- proposals included. Only the proposer, while still a member, edits one, and
@@ -25,8 +27,9 @@ create table public.proposals (
   id uuid primary key default gen_random_uuid(),
   meal_id uuid not null references public.meals (id) on delete cascade,
   -- Filled from the caller, never sent by the client (no grant below). Kept
-  -- when they leave the trip; cleared if their account is deleted, so the
-  -- proposal, which a decision may rest on, outlives the account.
+  -- when they leave the trip; cleared if their account is deleted. The
+  -- proposal itself stays: a decision may rest on it, and its name, note and
+  -- link describe a restaurant, not the person (decided on #8, ADR 0005).
   proposed_by uuid default auth.uid() references auth.users (id) on delete set null,
   -- Stored already trimmed, like a trip's name, so the length limit is on
   -- what is stored.
@@ -50,7 +53,8 @@ create table public.proposals (
   place_cid text check (char_length(place_cid) between 1 and 64),
   lat double precision check (lat between -90 and 90),
   lng double precision check (lng between -180 and 180),
-  -- When the name became read-only: the first vote (#10). Never cleared.
+  -- When the name became read-only: the first vote (#10). Cleared when the
+  -- last vote is withdrawn, and only by private.unlock_proposal_name().
   name_locked_at timestamptz,
   created_at timestamptz not null default now(),
   check ((lat is null) = (lng is null))
@@ -69,6 +73,14 @@ create index proposals_proposed_by_idx on public.proposals (proposed_by);
 --
 -- Sending the unchanged name is not a change, so the app may send the name
 -- and the note together.
+--
+-- Clearing the marker is refused unless private.unlock_proposal_name() is
+-- doing it: that function names the proposal in a transaction-local setting
+-- for the length of its own UPDATE and resets it straight after. No client
+-- role can use a forged setting, because none holds UPDATE on name_locked_at
+-- (service_role included, see the grants), and PostgREST exposes no way to
+-- call set_config. Only the table owner could forge it, and the owner can
+-- drop the trigger anyway.
 create function private.keep_proposal_name_locked()
 returns trigger
 language plpgsql
@@ -77,10 +89,13 @@ set search_path = ''
 as $$
 begin
   if old.name_locked_at is not null then
-    if new.name_locked_at is null then
+    if new.name_locked_at is null
+      and coalesce(current_setting('what_to_eat.unlocking_proposal', true), '')
+        is distinct from old.id::text
+    then
       raise exception 'proposal_name_unlock'
         using errcode = 'P0001',
-          hint = 'A proposal''s name, once locked by a vote, stays locked.';
+          hint = 'Only withdrawing the last vote unlocks a proposal''s name.';
     end if;
     if new.place_name is distinct from old.place_name then
       raise exception 'proposal_name_locked'
@@ -97,13 +112,12 @@ create trigger proposals_name_lock
   before update on public.proposals
   for each row execute function private.keep_proposal_name_locked();
 
--- The hook for #10. Its trigger on a new vote calls this with the vote's
--- proposal, from a SECURITY DEFINER trigger function (the voter holds no
--- grant on name_locked_at, and is usually not the proposer). Locking an
--- already locked name keeps the first time, so every vote may call it.
---
--- The lock is sticky: withdrawing the last vote does not unlock the name.
--- See docs/adr/0005-proposal-name-lock.md.
+-- The hooks for #10. Its vote triggers call these from a SECURITY DEFINER
+-- trigger function (the voter holds no grant on name_locked_at, and is
+-- usually not the proposer): lock when a proposal gets its first vote, unlock
+-- when its last vote is withdrawn. Locking an already locked name keeps the
+-- first time, and unlocking an unlocked one does nothing, so each may be
+-- called whenever it might apply. See docs/adr/0005-proposal-name-lock.md.
 create function private.lock_proposal_name(proposal_id uuid)
 returns void
 language sql
@@ -115,6 +129,28 @@ as $$
   set name_locked_at = now()
   where p.id = lock_proposal_name.proposal_id
     and p.name_locked_at is null
+$$;
+
+create function private.unlock_proposal_name(proposal_id uuid)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  perform pg_catalog.set_config(
+    'what_to_eat.unlocking_proposal', unlock_proposal_name.proposal_id::text, true
+  );
+
+  update public.proposals p
+  set name_locked_at = null
+  where p.id = unlock_proposal_name.proposal_id
+    and p.name_locked_at is not null;
+
+  -- Nothing later in the transaction may ride on this unlock.
+  perform pg_catalog.set_config('what_to_eat.unlocking_proposal', '', true);
+end;
 $$;
 
 -- RLS ---------------------------------------------------------------------
@@ -170,20 +206,26 @@ create policy proposals_update on public.proposals
 
 -- Grants ------------------------------------------------------------------
 -- As in the initial migration: take back the Data API's default ALL, then
--- grant exactly what the policies are written for. service_role keeps its
--- defaults (the Edge Functions of #9 onwards may need to read and write),
--- except DELETE and TRUNCATE: nothing ever deletes a proposal.
+-- grant exactly what the policies are written for.
+--
+-- service_role keeps SELECT and gets INSERT and UPDATE on every column but
+-- the name lock (the Edge Functions of #9 onwards may need to write), so it
+-- can neither lock nor unlock a name, forged setting or not. It holds no
+-- DELETE or TRUNCATE: nothing ever deletes a proposal.
 --
 -- #9 chooses how place_cid, lat and lng are written (a grant here, or filled
 -- from its resolution cache); until then no client may write them.
 
-revoke all on public.proposals from anon, authenticated;
-revoke delete, truncate on public.proposals from service_role;
-grant select on public.proposals to authenticated;
+revoke all on public.proposals from anon, authenticated, service_role;
+grant select on public.proposals to authenticated, service_role;
 grant insert (meal_id, place_name, source_url, note) on public.proposals to authenticated;
 grant update (place_name, note) on public.proposals to authenticated;
+grant insert (id, meal_id, proposed_by, place_name, source_url, note, place_cid, lat, lng, created_at)
+  on public.proposals to service_role;
+grant update (place_name, note, place_cid, lat, lng) on public.proposals to service_role;
 
--- The trigger function needs no grant to fire; the lock is called only from
--- #10's trigger function, which runs as its owner.
+-- The trigger function needs no grant to fire; the lock and unlock are
+-- called only from #10's trigger functions, which run as their owner.
 revoke all on function private.keep_proposal_name_locked() from public, anon, authenticated, service_role;
 revoke all on function private.lock_proposal_name(uuid) from public, anon, authenticated, service_role;
+revoke all on function private.unlock_proposal_name(uuid) from public, anon, authenticated, service_role;

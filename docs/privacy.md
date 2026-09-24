@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-23_
+_Last updated: 2026-09-24_
 
 What to Eat is a small app for friends on a trip to propose restaurants for each meal, vote on them, and put the decided meal on everyone's calendar. It is a personal, non-commercial project and is still in early development.
 
@@ -56,7 +56,7 @@ The app's use of information received from Google APIs complies with the [Google
 ## Keeping and deleting your data
 
 - **Leaving a trip.** You stop receiving its email and are removed from future calendar events. Proposals and votes you made stay in the trip's history, so the group can still see why a meal was decided.
-- **Deleting your data.** To have your account and personal data deleted, open an issue at the link below. We will delete it within 30 days.
+- **Deleting your data.** To have your account and personal data deleted, open an issue at the link below. We will delete it within 30 days. Restaurants you proposed stay in the trip, without your name.
 - **Revoking Google access.** You can revoke the app's access to your Google account at any time at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Calendars the app created stay on your account, and you can delete them yourself in Google Calendar.
 
 ## Changes

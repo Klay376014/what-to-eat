@@ -3,9 +3,10 @@
 -- everyone while the note stays editable.
 --
 -- Votes arrive in #10. The lock is the proposal's `name_locked_at`, which only
--- private.lock_proposal_name() sets; #10's vote trigger calls it (see
--- docs/adr/0005-proposal-name-lock.md). Here the owner calls it, standing in
--- for the first vote.
+-- private.lock_proposal_name() sets and only private.unlock_proposal_name()
+-- clears; #10's vote trigger calls them on the first vote and when the last
+-- one is withdrawn (see docs/adr/0005-proposal-name-lock.md). Here the owner
+-- calls them, standing in for the votes.
 --
 -- Cast (fixtures are inserted as the table owner, which bypasses RLS):
 --   alice  organiser of trip A
@@ -17,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(41);
+select plan(58);
 
 insert into auth.users (id, email) values
   ('11111111-1111-1111-1111-111111111111', 'alice@example.com'),
@@ -363,6 +364,138 @@ select throws_ok(
 
 reset role;
 
+-- Withdrawing the last vote unlocks the name ---------------------------------------
+-- Standing in for #10: the only vote on bob's proposal is withdrawn.
+
+select lives_ok(
+  $$ select private.unlock_proposal_name('b2000000-0000-0000-0000-000000000001') $$,
+  'withdrawing the last vote unlocks the proposal''s name'
+);
+select is(
+  (select name_locked_at from public.proposals where id = 'b2000000-0000-0000-0000-000000000001'),
+  null,
+  'the proposal no longer says its name is locked'
+);
+select lives_ok(
+  $$ select private.unlock_proposal_name('b2000000-0000-0000-0000-000000000001') $$,
+  'unlocking a name that is not locked is no error'
+);
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}';
+
+select results_eq(
+  $$ update public.proposals set place_name = 'Afuri Ramen Ebisu (Ebisu branch)'
+     where id = 'b2000000-0000-0000-0000-000000000001'
+     returning place_name $$,
+  array['Afuri Ramen Ebisu (Ebisu branch)'],
+  'with no votes left, the proposer can rename it again'
+);
+
+-- A new first vote locks it again.
+reset role;
+
+select lives_ok(
+  $$ select private.lock_proposal_name('b2000000-0000-0000-0000-000000000001') $$,
+  'a new first vote locks the name again'
+);
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}';
+
+select throws_ok(
+  $$ update public.proposals set place_name = 'Swapped after relock'
+     where id = 'b2000000-0000-0000-0000-000000000001' $$,
+  'P0001', 'proposal_name_locked',
+  'once locked again, the proposer cannot rename it'
+);
+
+-- Only the unlock function clears the marker ----------------------------------------
+-- Unlocking also leaves nothing behind in the transaction: the owner's direct
+-- clear below comes after an unlock in this same transaction and still fails.
+
+select throws_ok(
+  $$ update public.proposals set name_locked_at = null
+     where id = 'b2000000-0000-0000-0000-000000000001' $$,
+  '42501', null,
+  'the proposer cannot clear the marker directly'
+);
+-- Forging the setting the unlock uses does not help a client: it has no grant.
+select throws_ok(
+  $$ select set_config('what_to_eat.unlocking_proposal', 'b2000000-0000-0000-0000-000000000001', true);
+     update public.proposals set name_locked_at = null
+     where id = 'b2000000-0000-0000-0000-000000000001' $$,
+  '42501', null,
+  'a member who forges the unlock setting still cannot clear the marker'
+);
+
+reset role;
+
+select throws_ok(
+  $$ update public.proposals set name_locked_at = null
+     where id = 'b2000000-0000-0000-0000-000000000001' $$,
+  'P0001', 'proposal_name_unlock',
+  'the table owner cannot clear the marker with an ordinary update, even after an unlock earlier in the transaction'
+);
+
+set local role service_role;
+set local request.jwt.claims to '{"role": "service_role"}';
+
+select throws_ok(
+  $$ update public.proposals set name_locked_at = null
+     where id = 'b2000000-0000-0000-0000-000000000001' $$,
+  '42501', null,
+  'the service role cannot clear the marker directly'
+);
+select throws_ok(
+  $$ select set_config('what_to_eat.unlocking_proposal', 'b2000000-0000-0000-0000-000000000001', true);
+     update public.proposals set name_locked_at = null
+     where id = 'b2000000-0000-0000-0000-000000000001' $$,
+  '42501', null,
+  'the service role cannot clear it by forging the unlock setting either'
+);
+
+reset role;
+
+select isnt(
+  (select name_locked_at from public.proposals where id = 'b2000000-0000-0000-0000-000000000001'),
+  null,
+  'every refused clear left the name locked'
+);
+
+-- Only the vote path can unlock ---------------------------------------------------
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}';
+
+select throws_ok(
+  $$ select private.unlock_proposal_name('b2000000-0000-0000-0000-000000000001') $$,
+  '42501', null,
+  'the proposer cannot unlock their own proposal''s name'
+);
+
+reset role;
+set local role anon;
+set local request.jwt.claims to '{"role": "anon"}';
+
+select throws_ok(
+  $$ select private.unlock_proposal_name('b2000000-0000-0000-0000-000000000001') $$,
+  '42501', null,
+  'an unauthenticated caller cannot unlock a proposal''s name'
+);
+
+reset role;
+set local role service_role;
+set local request.jwt.claims to '{"role": "service_role"}';
+
+select throws_ok(
+  $$ select private.unlock_proposal_name('b2000000-0000-0000-0000-000000000001') $$,
+  '42501', null,
+  'the service role cannot unlock a proposal''s name'
+);
+
+reset role;
+
 select ok(
   has_column_privilege('authenticated', 'public.proposals', 'place_name', 'UPDATE')
     and has_column_privilege('authenticated', 'public.proposals', 'note', 'UPDATE')
@@ -382,6 +515,17 @@ select ok(
     and not has_function_privilege('anon', 'private.lock_proposal_name(uuid)', 'EXECUTE')
     and not has_function_privilege('service_role', 'private.lock_proposal_name(uuid)', 'EXECUTE'),
   'no client role can call the lock'
+);
+select ok(
+  not has_function_privilege('authenticated', 'private.unlock_proposal_name(uuid)', 'EXECUTE')
+    and not has_function_privilege('anon', 'private.unlock_proposal_name(uuid)', 'EXECUTE')
+    and not has_function_privilege('service_role', 'private.unlock_proposal_name(uuid)', 'EXECUTE'),
+  'no client role can call the unlock'
+);
+select ok(
+  not has_column_privilege('service_role', 'public.proposals', 'name_locked_at', 'UPDATE')
+    and not has_column_privilege('service_role', 'public.proposals', 'name_locked_at', 'INSERT'),
+  'not even the service role may write the name lock'
 );
 
 select * from finish();

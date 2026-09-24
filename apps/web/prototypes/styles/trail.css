@@ -1,0 +1,74 @@
+/*
+ * The Cartographer trail: a dashed route down a day, with a pin per meal.
+ * Pins are filled when the meal is decided, hollow otherwise (ADR 0002).
+ * Used by layouts A and C.
+ */
+.trail {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 28px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.trail::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--route-dot-size) / 2 - 1px);
+  top: 24px;
+  bottom: 24px;
+  border-left: 2px dashed var(--route);
+}
+
+.stop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 5.75rem minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.stop::before {
+  content: "";
+  position: absolute;
+  left: -28px;
+  top: 50%;
+  width: var(--route-dot-size);
+  height: var(--route-dot-size);
+  margin-top: calc(var(--route-dot-size) / -2);
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 2px solid var(--route);
+  border-radius: var(--route-dot-radius);
+  transform: rotate(var(--route-dot-rotate));
+}
+
+.stop.is-decided::before {
+  background: var(--route);
+}
+
+.stop-label {
+  font-size: var(--text-sm);
+  font-weight: var(--label-weight);
+  line-height: 1.25;
+}
+
+.kicker {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* The grid will wrap each marker in a real control; here a plain button. */
+.slot-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-slot);
+  cursor: pointer;
+  touch-action: manipulation;
+}

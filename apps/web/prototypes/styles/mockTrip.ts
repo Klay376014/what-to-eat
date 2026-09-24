@@ -1,150 +1,100 @@
-/* Mock data for the style gallery. Not shaped like the real API on purpose. */
+/*
+ * Mock trip for the #7 grid layout study: 5 days in Tokyo, several "Other"
+ * meals on one day (Fri), and slots in all three states.
+ */
+import type { MealSlotState } from "../../src/ui/mealSlotState.ts";
 
-export interface Member {
-  id: string;
-  name: string;
-  initials: string;
-}
-
-export const members: Member[] = [
-  { id: "kl", name: "Klay Lee", initials: "KL" },
-  { id: "mc", name: "Mei Chen", initials: "MC" },
-  { id: "jw", name: "Jun Wu", initials: "JW" },
-  { id: "at", name: "Ann Tsai", initials: "AT" },
-  { id: "rl", name: "Ray Lin", initials: "RL" },
-];
-
-export const me = "kl";
-
-export function member(id: string): Member {
-  const found = members.find((m) => m.id === id);
-  if (!found) throw new Error(`Unknown member ${id}`);
-  return found;
-}
-
-export type Slot =
-  | { state: "empty" }
-  | { state: "discussing"; proposals: number; awaitingMe: boolean }
-  | { state: "decided"; restaurant: string };
-
-export interface OtherMeal {
+export interface Meal {
+  /** "Breakfast", "Lunch", "Dinner", or the free-text label of an "Other" meal. */
   label: string;
-  slot: Slot;
+  kind: "breakfast" | "lunch" | "dinner" | "other";
+  slot: MealSlotState;
 }
 
 export interface Day {
   date: string;
   weekday: string;
   label: string;
-  breakfast: Slot;
-  lunch: Slot;
-  dinner: Slot;
-  other: OtherMeal[];
+  meals: Meal[];
 }
 
-const empty: Slot = { state: "empty" };
-const discussing = (proposals: number, awaitingMe = false): Slot => ({
-  state: "discussing",
-  proposals,
-  awaitingMe,
-});
-const decided = (restaurant: string): Slot => ({ state: "decided", restaurant });
+const empty: MealSlotState = { state: "empty" };
+const discussing = (proposals: number): MealSlotState => ({ state: "discussing", proposals });
+const decided = (restaurant: string): MealSlotState => ({ state: "decided", restaurant });
 
-export const trip = {
-  name: "Tokyo, October",
-  dates: "14 – 18 Oct 2026",
-  timezone: "Asia/Tokyo",
-};
+function day(
+  date: string,
+  weekday: string,
+  label: string,
+  [breakfast, lunch, dinner]: [MealSlotState, MealSlotState, MealSlotState],
+  other: [string, MealSlotState][] = [],
+): Day {
+  return {
+    date,
+    weekday,
+    label,
+    meals: [
+      { label: "Breakfast", kind: "breakfast", slot: breakfast },
+      { label: "Lunch", kind: "lunch", slot: lunch },
+      { label: "Dinner", kind: "dinner", slot: dinner },
+      ...other.map(([l, slot]) => ({ label: l, kind: "other" as const, slot })),
+    ],
+  };
+}
+
+export const trip = { name: "Tokyo, October", dates: "14 – 18 Oct 2026", timezone: "Asia/Tokyo" };
 
 export const days: Day[] = [
-  {
-    date: "2026-10-14",
-    weekday: "Wed",
-    label: "14 Oct",
-    breakfast: empty,
-    lunch: decided("Afuri Ramen Ebisu"),
-    dinner: discussing(3, true),
-    other: [],
-  },
-  {
-    date: "2026-10-15",
-    weekday: "Thu",
-    label: "15 Oct",
-    breakfast: decided("Onibus Coffee Nakameguro"),
-    lunch: empty,
-    dinner: decided("Uobei Shibuya Dogenzaka"),
-    other: [{ label: "Afternoon tea", slot: discussing(1) }],
-  },
-  {
-    date: "2026-10-16",
-    weekday: "Fri",
-    label: "16 Oct",
-    breakfast: discussing(2),
-    lunch: decided("Tsukiji Itadori Bekkan"),
-    dinner: empty,
-    other: [
-      { label: "Afternoon tea", slot: decided("Higashiya Ginza") },
-      { label: "Late-night snack", slot: discussing(2, true) },
-      { label: "Dessert run", slot: empty },
+  day("2026-10-14", "Wed", "14 Oct", [empty, decided("Afuri Ramen Ebisu"), discussing(3)]),
+  day(
+    "2026-10-15",
+    "Thu",
+    "15 Oct",
+    [decided("Onibus Coffee Nakameguro"), empty, decided("Uobei Shibuya Dogenzaka")],
+    [["Afternoon tea", discussing(1)]],
+  ),
+  day(
+    "2026-10-16",
+    "Fri",
+    "16 Oct",
+    [discussing(2), decided("Tsukiji Itadori Bekkan"), empty],
+    [
+      ["Afternoon tea", decided("Higashiya Ginza")],
+      ["Late-night snack", discussing(2)],
+      ["Dessert run", empty],
     ],
-  },
-  {
-    date: "2026-10-17",
-    weekday: "Sat",
-    label: "17 Oct",
-    breakfast: empty,
-    lunch: discussing(4),
-    dinner: discussing(1, true),
-    other: [],
-  },
-  {
-    date: "2026-10-18",
-    weekday: "Sun",
-    label: "18 Oct",
-    breakfast: decided("Komeda Coffee Shinagawa"),
-    lunch: empty,
-    dinner: empty,
-    other: [{ label: "Airport last meal", slot: discussing(2) }],
-  },
+  ),
+  day("2026-10-17", "Sat", "17 Oct", [empty, discussing(4), discussing(1)]),
+  day(
+    "2026-10-18",
+    "Sun",
+    "18 Oct",
+    [decided("Komeda Coffee Shinagawa"), empty, empty],
+    [["Airport last meal", discussing(2)]],
+  ),
 ];
 
-export interface Proposal {
-  id: string;
-  name: string;
-  proposedBy: string;
-  note: string;
-  up: string[];
-  down: string[];
-  decided: boolean;
+export function openCount(d: Day): number {
+  return d.meals.filter((m) => m.slot.state !== "decided").length;
 }
 
-/** Thu 15 Oct, dinner: decided, with the proposals that were considered. */
-export const dinnerProposals: Proposal[] = [
-  {
-    id: "p1",
-    name: "Uobei Shibuya Dogenzaka",
-    proposedBy: "mc",
-    note: "Conveyor sushi, no booking needed. 5 min from the hotel.",
-    up: ["kl", "mc", "jw", "at"],
-    down: [],
-    decided: true,
-  },
-  {
-    id: "p2",
-    name: "Gyukatsu Motomura Shibuya",
-    proposedBy: "rl",
-    note: "Queue is usually 45 min after 18:00.",
-    up: ["rl", "jw"],
-    down: ["at"],
-    decided: false,
-  },
-  {
-    id: "p3",
-    name: "Tonki Meguro",
-    proposedBy: "jw",
-    note: "",
-    up: [],
-    down: ["mc", "at"],
-    decided: false,
-  },
-];
+export function emptyCount(d: Day): number {
+  return d.meals.filter((m) => m.slot.state === "empty").length;
+}
+
+export const totals = {
+  meals: days.reduce((n, d) => n + d.meals.length, 0),
+  decided: days.reduce((n, d) => n + d.meals.length - openCount(d), 0),
+  empty: days.reduce((n, d) => n + emptyCount(d), 0),
+};
+
+export function slotLabel(meal: Meal, d: Day): string {
+  const s = meal.slot;
+  const state =
+    s.state === "empty"
+      ? "not planned"
+      : s.state === "discussing"
+        ? `being discussed, ${s.proposals} ${s.proposals === 1 ? "proposal" : "proposals"}`
+        : `decided, ${s.restaurant}`;
+  return `${meal.label}, ${d.weekday} ${d.label}: ${state}`;
+}

@@ -1,47 +1,36 @@
 <script setup lang="ts">
+/*
+ * #19 phase 2 gallery: the chosen Cartographer tokens (the production
+ * tokens.css) and the #7 grid layout study. Throwaway, dev only.
+ */
 import { computed, ref, watchEffect } from "vue";
-import BaseComponents from "./BaseComponents.vue";
-import { audit } from "./contrast.ts";
-import EmptyTrips from "./EmptyTrips.vue";
-import Icon from "./Icon.vue";
-import ProposalList from "./ProposalList.vue";
-import { catalog, groups } from "./catalog.ts";
-import { cssVariables, resolvedTokens, type Mode } from "./styles.ts";
-import TripGrid from "./TripGrid.vue";
+import BaseButton from "../../src/ui/BaseButton.vue";
+import BaseCard from "../../src/ui/BaseCard.vue";
+import BaseIcon from "../../src/ui/BaseIcon.vue";
+import BaseSheet from "./BaseSheet.vue";
+import LayoutCards from "./LayoutCards.vue";
+import LayoutDayTabs from "./LayoutDayTabs.vue";
+import LayoutMatrix from "./LayoutMatrix.vue";
+import { layouts } from "./layouts.ts";
+import TripSummary from "./TripSummary.vue";
+
+type View = (typeof layouts)[number]["id"] | "components";
 
 const params = new URLSearchParams(location.search);
-const initialIndex = catalog.findIndex((s) => s.id === params.get("style"));
-// Round 2 opens on its reference, Menu Card, so stepping forward compares.
-const defaultIndex = catalog.findIndex((s) => s.id === "menu-card");
-const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
-
-const index = ref(initialIndex >= 0 ? initialIndex : defaultIndex);
-const mode = ref<Mode>(
-  params.get("mode") === "dark" || params.get("mode") === "light"
-    ? (params.get("mode") as Mode)
-    : prefersDark
-      ? "dark"
-      : "light",
+const views: View[] = ["cards", "matrix", "tabs", "components"];
+const view = ref<View>(views.find((v) => v === params.get("layout")) ?? "cards");
+const dark = ref(
+  params.get("mode")
+    ? params.get("mode") === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches,
 );
-
-const style = computed(() => catalog[index.value]!);
-const results = computed(() => audit(resolvedTokens(style.value, mode.value)));
-const failures = computed(() => results.value.filter((r) => !r.pass));
-
-function step(delta: number) {
-  index.value = (index.value + delta + catalog.length) % catalog.length;
-}
+const note = computed(() => layouts.find((l) => l.id === view.value));
 
 watchEffect(() => {
-  const root = document.documentElement;
-  for (const [key, value] of Object.entries(cssVariables(style.value, mode.value))) {
-    root.style.setProperty(key, value);
-  }
-  root.style.colorScheme = mode.value;
-  document.title = `${style.value.name} (${mode.value}) · Style gallery`;
+  document.documentElement.dataset.theme = dark.value ? "dark" : "light";
   const url = new URL(location.href);
-  url.searchParams.set("style", style.value.id);
-  url.searchParams.set("mode", mode.value);
+  url.searchParams.set("layout", view.value);
+  url.searchParams.set("mode", dark.value ? "dark" : "light");
   history.replaceState(null, "", url);
 });
 </script>
@@ -49,102 +38,93 @@ watchEffect(() => {
 <template>
   <header class="chrome">
     <div class="chrome-inner">
-      <button type="button" class="btn btn-icon" aria-label="Previous style" @click="step(-1)">
-        <Icon name="caret-left" />
-      </button>
-      <label class="visually-hidden" for="style-picker">Style</label>
-      <select id="style-picker" v-model="index" class="chrome-select">
-        <optgroup v-for="group in groups" :key="group.label" :label="group.label">
-          <option v-for="s in group.styles" :key="s.id" :value="catalog.indexOf(s)">
-            {{ s.name }}{{ s.round === 1 && s.id === "menu-card" ? " (round 1)" : "" }}
-          </option>
-        </optgroup>
+      <label class="visually-hidden" for="view-picker">Show</label>
+      <select id="view-picker" v-model="view" class="picker">
+        <option v-for="l in layouts" :key="l.id" :value="l.id">{{ l.name }}</option>
+        <option value="components">Base components</option>
       </select>
-      <button type="button" class="btn btn-icon" aria-label="Next style" @click="step(1)">
-        <Icon name="caret-right" />
-      </button>
-      <button
-        type="button"
-        class="btn btn-icon"
-        :aria-pressed="mode === 'dark'"
-        aria-label="Dark mode"
-        @click="mode = mode === 'dark' ? 'light' : 'dark'"
-      >
-        <Icon :name="mode === 'dark' ? 'moon' : 'sun'" />
-      </button>
+      <BaseButton :aria-pressed="dark" aria-label="Dark mode" @click="dark = !dark">
+        <BaseIcon :name="dark ? 'moon' : 'sun'" />
+      </BaseButton>
     </div>
   </header>
 
-  <main class="page stack-lg">
-    <section class="card stack-sm" aria-labelledby="style-name">
-      <p class="kicker">
-        Round {{ style.round }}{{ style.id === "menu-card" ? ", the reference" : "" }} · style
-        {{ index + 1 }} of {{ catalog.length }} · {{ mode }}
-      </p>
-      <h1 id="style-name" class="title-xl">{{ style.name }}</h1>
-      <p class="lead">{{ style.rationale.mood }}</p>
-      <template v-if="style.rationale.sun">
-        <h2 class="title-sm">Travel feel versus sunlight</h2>
-        <p>{{ style.rationale.sun }}</p>
-      </template>
-      <h2 class="title-sm">Why it suits this app</h2>
+  <main class="page stack">
+    <BaseCard v-if="note">
+      <p class="muted small">#7 grid layout study · Cartographer · no layout chosen yet</p>
+      <h1>{{ note.name }}</h1>
+      <p>{{ note.summary }}</p>
+      <h2 class="note-head">Seeing the gaps across the trip at 360px</h2>
+      <p>{{ note.gaps }}</p>
+      <h2 class="note-head">For</h2>
       <ul class="bullets">
-        <li v-for="line in style.rationale.why" :key="line">{{ line }}</li>
+        <li v-for="line in note.pros" :key="line">{{ line }}</li>
       </ul>
-      <h2 class="title-sm">Trade-offs</h2>
+      <h2 class="note-head">Against</h2>
       <ul class="bullets">
-        <li v-for="line in style.rationale.tradeoffs" :key="line">{{ line }}</li>
+        <li v-for="line in note.cons" :key="line">{{ line }}</li>
       </ul>
-      <h2 class="title-sm">From ui-ux-pro-max</h2>
-      <ul class="bullets small">
-        <li v-for="line in style.rationale.sources" :key="line">{{ line }}</li>
-      </ul>
-      <details class="audit">
-        <summary>
-          Contrast: {{ results.length - failures.length }} of {{ results.length }} pairs pass WCAG
-          AA in {{ mode }} mode
-        </summary>
-        <table class="audit-table">
-          <thead>
-            <tr>
-              <th scope="col">Pair</th>
-              <th scope="col">Ratio</th>
-              <th scope="col">Needs</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in results" :key="r.label">
-              <td>{{ r.label }}</td>
-              <td class="tabular">{{ r.ratio.toFixed(2) }}</td>
-              <td class="tabular">{{ r.min }} {{ r.pass ? "pass" : "FAIL" }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </details>
-    </section>
+    </BaseCard>
+    <BaseCard v-else>
+      <h1>Base components</h1>
+      <p>The production components from src/ui, with the production tokens.</p>
+    </BaseCard>
 
-    <section class="stack" aria-labelledby="s-grid">
-      <h2 id="s-grid" class="section-title">1. Trip grid</h2>
-      <TripGrid />
-    </section>
-
-    <section class="stack" aria-labelledby="s-proposals">
-      <h2 id="s-proposals" class="section-title">2. A meal's proposals</h2>
-      <ProposalList />
-    </section>
-
-    <section class="stack" aria-labelledby="s-empty">
-      <h2 id="s-empty" class="section-title">3. No trips yet</h2>
-      <EmptyTrips />
-    </section>
-
-    <section class="stack" aria-labelledby="s-base">
-      <h2 id="s-base" class="section-title">4. Base components</h2>
-      <BaseComponents />
-    </section>
-
-    <p class="muted small footer-note">
-      Throwaway prototype for issue #19. Not part of the production build.
-    </p>
+    <template v-if="note">
+      <TripSummary />
+      <LayoutCards v-if="view === 'cards'" />
+      <LayoutMatrix v-else-if="view === 'matrix'" />
+      <LayoutDayTabs v-else />
+    </template>
+    <BaseSheet v-else />
   </main>
 </template>
+
+<style scoped>
+.chrome {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-bottom: var(--border-width) solid var(--border-strong);
+}
+
+.chrome-inner,
+.page {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.chrome-inner {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+}
+
+.picker {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  color: var(--text);
+  border: var(--control-border-width) solid var(--border-strong);
+  border-radius: var(--radius-control);
+}
+
+.page {
+  padding: var(--space-4) var(--space-4) calc(var(--space-6) * 2);
+}
+
+.note-head {
+  font-size: var(--text-base);
+}
+
+.small {
+  font-size: var(--text-sm);
+}
+
+.bullets {
+  padding-left: 1.25rem;
+}
+</style>

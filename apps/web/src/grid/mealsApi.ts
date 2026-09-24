@@ -18,6 +18,11 @@ export interface MealsApi {
    * breakfast, lunch or dinner (someone else added it first).
    */
   addMeal(meal: NewMeal): Promise<Meal>;
+  /**
+   * Renames an "other" meal, sending the name trimmed. Only its label
+   * changes; breakfast, lunch and dinner have no name to change.
+   */
+  renameMeal(mealId: string, label: string): Promise<Meal>;
 }
 
 /** The database refused a second breakfast, lunch or dinner on one day. */
@@ -88,6 +93,20 @@ export function createSupabaseMealsApi(client: Client): MealsApi {
       if (error?.code === UNIQUE_VIOLATION) throw new SlotTakenError(meal.slot);
       if (error) throw error;
       return toMeal(data);
+    },
+
+    async renameMeal(mealId, label) {
+      // RLS turns a refused rename into zero rows rather than an error, so
+      // ask for the row back to tell the two apart.
+      const { data, error } = await client
+        .from("meals")
+        .update({ label: label.trim() })
+        .eq("id", mealId)
+        .select(MEAL_COLUMNS);
+      if (error) throw error;
+      const [row] = data;
+      if (!row) throw new Error("This meal can no longer be renamed.");
+      return toMeal(row);
     },
   };
 }

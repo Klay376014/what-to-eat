@@ -447,6 +447,89 @@ describe("adding meals", () => {
   });
 });
 
+describe("renaming an other meal", () => {
+  function withTea() {
+    return createFakeMealsApi({
+      meals: [
+        aMeal({ tripId: "tokyo", date: "2026-10-01", slot: "other", label: "Afternoon tea" }),
+        aMeal({ tripId: "tokyo", date: "2026-10-01", slot: "other", label: "Late-night snack" }),
+      ],
+    });
+  }
+
+  function renameForm(wrapper: Wrapper) {
+    return fieldByLabel(wrapper, "New name").element.closest("form")!;
+  }
+
+  test("renames it in place, keeping its place on the trail", async () => {
+    const api = withTea();
+    const wrapper = await mountGrid(tokyo, api);
+
+    await slotButton(wrapper, "Afternoon tea").trigger("click");
+    await buttonByText(wrapper, "Rename").trigger("click");
+    expect(fieldByLabel(wrapper, "New name").element.value).toBe("Afternoon tea");
+
+    await fieldByLabel(wrapper, "New name").setValue("  Matcha and cake ");
+    renameForm(wrapper).dispatchEvent(new Event("submit"));
+    await flushPromises();
+
+    expect(trail(wrapper).slice(3)).toEqual([
+      "Matcha and cake Not planned",
+      "Late-night snack Not planned",
+    ]);
+    expect(wrapper.find('input[type="text"]').exists()).toBe(false);
+
+    wrapper.unmount();
+    const again = await mountGrid(tokyo, api);
+    expect(trail(again).slice(3)).toEqual([
+      "Matcha and cake Not planned",
+      "Late-night snack Not planned",
+    ]);
+  });
+
+  test("says on the field what is wrong with the name, and keeps the old one", async () => {
+    const wrapper = await mountGrid(tokyo, withTea());
+
+    await slotButton(wrapper, "Afternoon tea").trigger("click");
+    await buttonByText(wrapper, "Rename").trigger("click");
+    const field = fieldByLabel(wrapper, "New name");
+    await field.setValue("   ");
+    renameForm(wrapper).dispatchEvent(new Event("submit"));
+    await flushPromises();
+
+    const errorId = field.attributes("aria-describedby")!.split(" ").at(-1)!;
+    expect(wrapper.get(`[id="${errorId}"]`).text()).toBe(
+      "Say what the meal is, like afternoon tea.",
+    );
+    expect(field.attributes("aria-invalid")).toBe("true");
+    expect(trail(wrapper)[3]).toBe("Afternoon tea Not planned");
+  });
+
+  test("can be cancelled, leaving the name as it was", async () => {
+    const wrapper = await mountGrid(tokyo, withTea());
+
+    await slotButton(wrapper, "Afternoon tea").trigger("click");
+    await buttonByText(wrapper, "Rename").trigger("click");
+    await fieldByLabel(wrapper, "New name").setValue("Something else");
+    await buttonByText(wrapper, "Cancel").trigger("click");
+
+    expect(trail(wrapper)[3]).toBe("Afternoon tea Not planned");
+    expect(buttonByText(wrapper, "Rename").exists()).toBe(true);
+  });
+
+  test("breakfast, lunch and dinner are named by their slot, so offer no rename", async () => {
+    const api = createFakeMealsApi({
+      meals: [aMeal({ tripId: "tokyo", date: "2026-10-01", slot: "dinner" })],
+    });
+    const wrapper = await mountGrid(tokyo, api);
+
+    await slotButton(wrapper, "Dinner").trigger("click");
+
+    expect(wrapper.text()).toContain("Dinner is open for proposals.");
+    expect(() => buttonByText(wrapper, "Rename")).toThrow();
+  });
+});
+
 describe("an undated trip", () => {
   test("has a tab for each date with meals, plus today, labelled Today, and opens on today", async () => {
     // 24 Sep 2026 in Taipei.

@@ -13,7 +13,7 @@ import BaseCard from "../ui/BaseCard.vue";
 import TextField from "../ui/TextField.vue";
 import { isIsoDate, readDayParam, writeDayParam } from "./dayParam.ts";
 import DayTabs from "./DayTabs.vue";
-import DayTrail, { type AddMeal } from "./DayTrail.vue";
+import DayTrail, { type AddMeal, type RenameMeal } from "./DayTrail.vue";
 import type { Meal } from "./meal.ts";
 import { SlotTakenError, useMealsApi } from "./mealsApi.ts";
 import { dayTabs, dayTrail, defaultDay, tripDates } from "./tripDays.ts";
@@ -82,6 +82,12 @@ function goTo(day: string) {
   select(day);
 }
 
+/** Renames an "other" meal and updates it in place on the trail. */
+const rename: RenameMeal = async (mealId, label) => {
+  const renamed = await api.renameMeal(mealId, label);
+  meals.value = meals.value.map((m) => (m.id === mealId ? { ...m, label: renamed.label } : m));
+};
+
 const add: AddMeal = async (meal) => {
   const input =
     meal.slot === "other"
@@ -135,7 +141,7 @@ const add: AddMeal = async (meal) => {
       </BaseCard>
 
       <BaseCard :id="panelId" role="tabpanel" :aria-labelledby="`${tabIdPrefix}-${activeDay}`">
-        <DayTrail :date="activeDay" :trail="trail" :add="add" />
+        <DayTrail :date="activeDay" :trail="trail" :add="add" :rename="rename" />
       </BaseCard>
     </template>
   </section>

@@ -6,8 +6,9 @@
  * The pin is decoration; each meal's MealSlotMarker carries its state.
  *
  * Each meal's button opens its details below it. A breakfast, lunch or
- * dinner nobody has added yet is offered for adding there; "Add another
- * meal" adds an "other" meal with its own name.
+ * dinner nobody has added yet is offered for adding there, and an "other"
+ * meal can be renamed there; "Add another meal" adds an "other" meal with
+ * its own name.
  */
 import { nextTick, ref, useId, useTemplateRef, watch } from "vue";
 import { errorMessage } from "../lib/errors.ts";
@@ -26,7 +27,15 @@ export type AddMeal = (meal: { slot: FixedSlot } | { slot: "other"; label: strin
   refreshFailure: string | null;
 }>;
 
-const props = defineProps<{ date: IsoDate; trail: readonly TrailEntry[]; add: AddMeal }>();
+/** Renames an "other" meal; throws when the rename is refused. */
+export type RenameMeal = (mealId: string, label: string) => Promise<void>;
+
+const props = defineProps<{
+  date: IsoDate;
+  trail: readonly TrailEntry[];
+  add: AddMeal;
+  rename: RenameMeal;
+}>();
 
 const id = useId();
 const expanded = ref<string | null>(null);
@@ -41,19 +50,66 @@ const addFailure = ref<string | null>(null);
 const addForm = useTemplateRef<HTMLFormElement>("addForm");
 const addButton = useTemplateRef<InstanceType<typeof BaseButton>>("addButton");
 
+/** The "other" meal whose name is being edited, if any. */
+const renaming = ref<string | null>(null);
+const newName = ref("");
+const newNameError = ref<string | undefined>(undefined);
+const renameFailure = ref<string | null>(null);
+const renameForm = useTemplateRef<HTMLFormElement[]>("renameForm");
+const renameButton = useTemplateRef<InstanceType<typeof BaseButton>[]>("renameButton");
+
 // A different day starts with everything closed.
 watch(
   () => props.date,
   () => {
     expanded.value = null;
     closeAdding();
+    closeRenaming();
   },
 );
 
 function toggle(entry: TrailEntry) {
   failure.value = null;
   notice.value = null;
+  closeRenaming();
   expanded.value = expanded.value === entry.key ? null : entry.key;
+}
+
+async function openRenaming(entry: TrailEntry) {
+  renaming.value = entry.key;
+  newName.value = entry.name;
+  newNameError.value = undefined;
+  renameFailure.value = null;
+  await nextTick();
+  renameForm.value?.[0]?.querySelector("input")?.select();
+}
+
+function closeRenaming() {
+  renaming.value = null;
+  newName.value = "";
+  newNameError.value = undefined;
+  renameFailure.value = null;
+}
+
+async function cancelRenaming() {
+  closeRenaming();
+  await nextTick();
+  (renameButton.value?.[0]?.$el as HTMLElement | undefined)?.focus();
+}
+
+async function submitRename(entry: TrailEntry) {
+  newNameError.value = validateMealLabel(newName.value) ?? undefined;
+  if (newNameError.value) return;
+  busy.value = true;
+  renameFailure.value = null;
+  try {
+    await props.rename(entry.meal!.id, newName.value.trim());
+    await cancelRenaming();
+  } catch (error) {
+    renameFailure.value = `Couldn't rename the meal: ${errorMessage(error)}`;
+  } finally {
+    busy.value = false;
+  }
 }
 
 /** Runs an add, reporting a failure through `report`. */
@@ -153,6 +209,36 @@ async function submitOther() {
           for {{ entry.name.toLowerCase() }}.
         </p>
         <p v-else>{{ entry.name }} is decided: {{ entry.state.restaurant }}.</p>
+
+        <!-- Only an "other" meal has a name of its own to change. -->
+        <template v-if="entry.meal !== null && entry.slot === 'other'">
+          <form
+            v-if="renaming === entry.key"
+            ref="renameForm"
+            class="stack-sm"
+            novalidate
+            @submit.prevent="submitRename(entry)"
+          >
+            <TextField
+              v-model="newName"
+              label="New name"
+              autocomplete="off"
+              :maxlength="MAX_MEAL_LABEL_LENGTH + 20"
+              :error="newNameError"
+            />
+            <p v-if="renameFailure" role="alert" class="error">{{ renameFailure }}</p>
+            <div class="actions">
+              <BaseButton type="submit" variant="primary" :disabled="busy">Save</BaseButton>
+              <BaseButton :disabled="busy" @click="cancelRenaming">Cancel</BaseButton>
+            </div>
+          </form>
+          <div v-else>
+            <BaseButton ref="renameButton" @click="openRenaming(entry)">
+              <BaseIcon name="pencil-simple" /> Rename
+            </BaseButton>
+          </div>
+        </template>
+
         <p v-if="notice" role="status">{{ notice }}</p>
         <p v-if="failure" role="alert" class="error">{{ failure }}</p>
       </div>

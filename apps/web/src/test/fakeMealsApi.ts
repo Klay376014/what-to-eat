@@ -52,6 +52,14 @@ export function createFakeMealsApi(seed: { meals?: Meal[] } = {}): FakeMealsApi 
       meals.push(meal);
       return { ...meal };
     },
+    async renameMeal(mealId, label) {
+      const meal = meals.find((m) => m.id === mealId);
+      if (!meal) throw new Error(`No meal ${mealId}`);
+      // Like the database's CHECK: only "other" meals carry a name.
+      if (meal.slot !== "other") throw new Error(`A ${meal.slot} has no name to change.`);
+      meal.label = label.trim();
+      return { ...meal };
+    },
     seed(meal) {
       meals.push({ ...meal, position: nextPosition++ });
     },

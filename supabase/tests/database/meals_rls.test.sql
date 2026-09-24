@@ -70,9 +70,9 @@ select results_eq(
   'the organiser reads every meal in their trip, including one a member added'
 );
 
--- Nobody edits or deletes a meal through the API yet -------------------------
--- Moving, renaming and removing meals are not part of the grid; a meal's
--- proposals and decision (later tickets) hang off it.
+-- Nobody moves or deletes a meal through the API ----------------------------
+-- Moving and removing meals are not part of the grid; a meal's proposals and
+-- decision (later tickets) hang off it. Renaming: meals_rename.test.sql.
 
 reset role;
 set local role authenticated;
@@ -255,7 +255,7 @@ select ok(
   not has_table_privilege('authenticated', 'public.meals', 'UPDATE')
     and not has_table_privilege('authenticated', 'public.meals', 'DELETE')
     and not has_table_privilege('authenticated', 'public.meals', 'TRUNCATE'),
-  'authenticated holds no UPDATE, DELETE or TRUNCATE on meals'
+  'authenticated holds no table-wide UPDATE (only the label, see meals_rename), DELETE or TRUNCATE on meals'
 );
 select ok(
   not has_table_privilege('anon', 'public.meals', 'SELECT')

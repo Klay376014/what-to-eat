@@ -8,6 +8,44 @@ export type Database = {
   };
   public: {
     Tables: {
+      invitations: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          expires_at: string;
+          id: string;
+          revoked_at: string | null;
+          token: string;
+          trip_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          expires_at?: string;
+          id?: string;
+          revoked_at?: string | null;
+          token: string;
+          trip_id: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          expires_at?: string;
+          id?: string;
+          revoked_at?: string | null;
+          token?: string;
+          trip_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invitations_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       profiles: {
         Row: {
           avatar_url: string | null;
@@ -93,6 +131,24 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      create_invitation: {
+        Args: { trip_id: string };
+        Returns: {
+          created_at: string;
+          created_by: string | null;
+          expires_at: string;
+          id: string;
+          revoked_at: string | null;
+          token: string;
+          trip_id: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "invitations";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       create_trip: {
         Args: {
           end_date?: string;
@@ -115,7 +171,27 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      join_trip: {
+        Args: { token: string };
+        Returns: {
+          joined: boolean;
+          trip_id: string;
+        }[];
+      };
       keepalive: { Args: never; Returns: number };
+      leave_trip: { Args: { trip_id: string }; Returns: undefined };
+      remove_member: {
+        Args: { trip_id: string; user_id: string };
+        Returns: undefined;
+      };
+      revoke_invitation: {
+        Args: { invitation_id: string };
+        Returns: undefined;
+      };
+      transfer_organiser: {
+        Args: { trip_id: string; user_id: string };
+        Returns: undefined;
+      };
     };
     Enums: {
       trip_role: "organiser" | "member";

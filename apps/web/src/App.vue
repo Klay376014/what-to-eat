@@ -7,10 +7,23 @@ import { errorMessage } from "./lib/errors.ts";
 import { supabase } from "./lib/supabase.ts";
 import { createSupabaseTripsApi, tripsApiKey } from "./trips/tripsApi.ts";
 import TripsHome from "./trips/TripsHome.vue";
+// #6: invitation links and membership.
+import InvitationGate from "./invitations/InvitationGate.vue";
+import { createSupabaseMembershipApi, membershipApiKey } from "./invitations/membershipApi.ts";
+import { clearPendingInvite, pendingInvite } from "./invitations/pendingInvite.ts";
 import BaseButton from "./ui/BaseButton.vue";
 import BaseCard from "./ui/BaseCard.vue";
 
 provide(tripsApiKey, createSupabaseTripsApi(supabase));
+provide(membershipApiKey, createSupabaseMembershipApi(supabase));
+
+// #6: an invitation captured from the address at startup (main.ts). Used
+// once: after it is spent, a later sign-in as someone else must not reuse it.
+const inviteToken = ref(pendingInvite());
+function inviteSettled() {
+  inviteToken.value = null;
+  clearPendingInvite();
+}
 
 const { ready, session } = useSession(supabase);
 
@@ -62,10 +75,18 @@ const leave = () => signOut(supabase);
     >
     <BaseCard v-if="!ready"><p class="muted">Loading…</p></BaseCard>
 
-    <SignIn v-else-if="!session" :sign-in="signIn" />
+    <SignIn v-else-if="!session" :sign-in="signIn" :invited="inviteToken !== null" />
 
     <!-- Keyed on the user so switching accounts starts from a clean slate. -->
-    <TripsHome v-else :key="session.user.id" />
+    <InvitationGate
+      v-else
+      :key="session.user.id"
+      v-slot="{ openTripId }"
+      :token="inviteToken"
+      @settled="inviteSettled"
+    >
+      <TripsHome :open-trip-id="openTripId" />
+    </InvitationGate>
   </main>
 </template>
 

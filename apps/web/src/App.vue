@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, provide, ref } from "vue";
+import AccountMenu, { type AccountUser } from "./account/AccountMenu.vue";
 import { signInWithGoogle, signOut, useSession } from "./auth/auth.ts";
 import SignIn from "./auth/SignIn.vue";
 import { errorMessage } from "./lib/errors.ts";
@@ -8,49 +9,63 @@ import { createSupabaseTripsApi, tripsApiKey } from "./trips/tripsApi.ts";
 import TripsHome from "./trips/TripsHome.vue";
 import BaseButton from "./ui/BaseButton.vue";
 import BaseCard from "./ui/BaseCard.vue";
-import BaseIcon from "./ui/BaseIcon.vue";
 
 provide(tripsApiKey, createSupabaseTripsApi(supabase));
 
 const { ready, session } = useSession(supabase);
-const failure = ref<string | null>(null);
 
-const displayName = computed(() => {
-  const meta = session.value?.user.user_metadata ?? {};
-  return (meta.full_name ?? meta.name ?? session.value?.user.email ?? "") as string;
+// The same Google name and picture the profiles row is filled from at
+// sign-in (supabase/migrations/..._profiles.sql), read from the session so
+// the header needs no extra request.
+const user = computed<AccountUser | null>(() => {
+  const account = session.value?.user;
+  if (!account) return null;
+  const meta = account.user_metadata ?? {};
+  const email = account.email ?? "";
+  const picture = (meta.avatar_url ?? meta.picture ?? null) as string | null;
+  return {
+    name: (meta.full_name ?? meta.name ?? email) as string,
+    email,
+    avatarUrl: picture?.startsWith("https://") ? picture : null,
+  };
 });
 
-async function leave() {
-  failure.value = null;
+const signIn = () => signInWithGoogle(supabase);
+const signInFailure = ref<string | null>(null);
+
+async function signInFromHeader() {
+  signInFailure.value = null;
   try {
-    await signOut(supabase);
+    await signIn();
   } catch (error) {
-    failure.value = `Couldn't sign out: ${errorMessage(error)}`;
+    signInFailure.value = `Couldn't start signing in: ${errorMessage(error)}`;
   }
 }
+const leave = () => signOut(supabase);
 </script>
 
 <template>
-  <header v-if="ready && session" class="app-header">
+  <!-- A solid bar: text never sits on the textured backdrop (ADR 0002). -->
+  <header class="app-header">
     <div class="app-header-inner">
       <span class="app-name">今天吃什麼</span>
-      <span class="who">{{ displayName }}</span>
-      <BaseButton variant="quiet" @click="leave"><BaseIcon name="sign-out" /> Sign out</BaseButton>
+      <template v-if="ready">
+        <AccountMenu v-if="user" :user="user" :sign-out="leave" />
+        <BaseButton v-else variant="primary" @click="signInFromHeader">Sign in</BaseButton>
+      </template>
     </div>
   </header>
 
   <main class="page stack">
+    <BaseCard v-if="signInFailure"
+      ><p role="alert" class="error">{{ signInFailure }}</p></BaseCard
+    >
     <BaseCard v-if="!ready"><p class="muted">Loading…</p></BaseCard>
 
-    <SignIn v-else-if="!session" :sign-in="() => signInWithGoogle(supabase)" />
+    <SignIn v-else-if="!session" :sign-in="signIn" />
 
-    <template v-else>
-      <BaseCard v-if="failure"
-        ><p role="alert" class="error">{{ failure }}</p></BaseCard
-      >
-      <!-- Keyed on the user so switching accounts starts from a clean slate. -->
-      <TripsHome :key="session.user.id" />
-    </template>
+    <!-- Keyed on the user so switching accounts starts from a clean slate. -->
+    <TripsHome v-else :key="session.user.id" />
   </main>
 </template>
 
@@ -71,6 +86,7 @@ async function leave() {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-height: 56px;
   padding: var(--space-1) var(--space-4);
 }
 
@@ -79,14 +95,6 @@ async function leave() {
   font-weight: var(--heading-weight);
   font-size: var(--text-lg);
   margin-right: auto;
-}
-
-.who {
-  color: var(--muted);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .page {

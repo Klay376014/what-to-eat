@@ -19,6 +19,15 @@ vp run -r build   # 建置全部
 vp run ready      # check + test + build
 ```
 
+## 登入（Google）
+
+只用 Google 登入，而且只能要 `openid email profile` 這三個 scope（原因與驗證紀錄見 `docs/adr/0001-google-sign-in-scopes.md`）。
+
+1. `apps/web/.env` 填 `VITE_SUPABASE_URL`、`VITE_SUPABASE_PUBLISHABLE_KEY`（見 `apps/web/.env.example`）。
+2. Google Cloud → Google Auth Platform → Clients：建一個 **Web application** client 專給登入用（不要和日曆的 client 共用），Authorised redirect URI 填 `https://<project-ref>.supabase.co/auth/v1/callback`。Data Access 只留 `openid`、`userinfo.email`、`userinfo.profile`。
+3. Supabase dashboard → Authentication → Sign In / Providers → Google：填 client ID / secret 並啟用；同一頁把 Email provider 關掉（Google 是唯一登入方式）。URL Configuration 的 Site URL / Redirect URLs 加上前端網址（本機是 `http://localhost:5173/**`；結尾的 `/**` 不能省，app 送出的網址帶斜線，少了它比對會失敗、登入後被導回 Site URL）。
+4. `vp run auth:check-scopes`：確認 hosted 專案實際向 Google 要的 scope 沒有超出 `openid email profile`，結果補進 ADR 的驗證表。
+
 ## CI
 
 - `.github/workflows/ci.yml`：PR 與 push 到 `main` 時跑 `vp check`、`vp run -r test`，並在 runner 上啟動本機 Supabase、套用 migrations、跑 `supabase test db`（pgTAP，測試放在 `supabase/tests/database/*.test.sql`）。本機沒有 Docker，資料庫測試只在 CI 跑。

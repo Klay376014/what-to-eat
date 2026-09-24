@@ -80,6 +80,7 @@ select is_empty(
 select cmp_ok(
   (select count(*) from pg_policies
    where schemaname = 'public'
+     and tablename in ('trips', 'trip_members')
      and coalesce(qual, '') || ' ' || coalesce(with_check, '') ~ 'private\.my_'),
   '=', 4::bigint,
   'every trips and trip_members policy asks the set-returning helpers'

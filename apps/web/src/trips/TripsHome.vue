@@ -87,12 +87,7 @@ function formatDate(date: string): string {
 
   <div v-else class="stack">
     <BaseCard class="trip-bar">
-      <SelectField
-        v-model="selectedId"
-        label="Trip"
-        class="trip-choice"
-        :disabled="mode === 'edit'"
-      >
+      <SelectField v-model="selectedId" label="Trip" :disabled="mode === 'edit'">
         <option v-for="trip in trips" :key="trip.id" :value="trip.id">{{ trip.name }}</option>
       </SelectField>
       <BaseButton :disabled="mode === 'edit'" @click="mode = 'create'">
@@ -137,8 +132,10 @@ function formatDate(date: string): string {
   gap: var(--space-2);
 }
 
-.trip-choice {
+/* SelectField's root carries this component's scope id, so this reaches its wrapper. */
+.trip-bar > .field {
   flex: 1;
+  min-width: 0;
 }
 
 .facts {

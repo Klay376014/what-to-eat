@@ -18,8 +18,9 @@ The app is used in a particular way, and that drives the design:
 - Votes show who cast them (#10), so the design needs a compact way to put
   faces or initials next to a +1 / −1 count.
 
-The choice was made from a throwaway gallery of 12 styles
-(`apps/web/prototypes/styles/`, commits `b2e8794` and `ffc4741`). All of them
+The choice was made from a throwaway gallery of 12 styles (it lived in
+`apps/web/prototypes/styles/`, added in commits `b2e8794` and `ffc4741`, and
+has since been deleted). All of them
 applied the same markup and mock data, and all were checked for WCAG AA in
 both themes.
 
@@ -68,6 +69,25 @@ The direction is implemented as:
 No component library. Plain Vue components and custom properties are enough
 for this scope.
 
+### Theme choice and the header
+
+The header follows the usual website pattern: the app name on the left, and on
+the right the signed-in person's avatar (their Google picture, or their
+initials) as a button that opens an account menu. The menu holds their name
+and email, the theme choice and Sign out. A signed-out visitor sees a "Sign in"
+button instead.
+
+The theme choice is **System / Light / Dark**, and defaults to System. It lives
+in the account menu, as it does in most apps that have an account menu, rather
+than as a separate header icon. This keeps the header to two things on a
+360px screen, and puts all per-person settings in one place. The choice is
+kept in `localStorage`; if storage is unavailable it falls back to System. It
+is applied through the `data-theme` hook, and a small inline script in
+`index.html` sets it before the app mounts, so the wrong theme never flashes.
+
+A signed-out visitor has no menu, so the sign-in page always follows the
+device theme.
+
 ## Sunlight rules
 
 The travel feel must never cost legibility in the sun. These rules come with
@@ -110,7 +130,8 @@ to lose in a restyle:
 - New UI uses the tokens and base components. A component that needs a new
   colour adds a token and an entry in `tokens.test.ts`, rather than a raw hex
   value.
-- The #7 grid layout is a separate decision, recorded in its own ADR once the
-  maintainer picks from the layout study in `apps/web/prototypes/styles/`.
-- The gallery's other 11 styles are deleted. Their tokens remain in the git
-  history at the commits above, should the direction ever be revisited.
+- The #7 grid layout is a separate decision:
+  [0003](0003-trip-grid-layout.md).
+- The gallery is deleted. Every style's tokens remain in the git history at the
+  commits above (and the layout study at `ead0af0`), should the direction ever
+  be revisited.

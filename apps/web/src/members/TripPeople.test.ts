@@ -7,7 +7,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, ref } from "vue";
 import { describe, expect, test } from "vite-plus/test";
-import { membershipApiKey } from "../invitations/membershipApi.ts";
+import { membershipApiKey, type MembershipApi } from "../invitations/membershipApi.ts";
 import { buttonByText } from "../test/dom.ts";
 import { createFakeMembership, type FakePerson } from "../test/fakeMembershipApi.ts";
 import { aTrip } from "../test/fakeTripsApi.ts";
@@ -26,6 +26,8 @@ async function show(options: {
   me: FakePerson;
   myRole: TripRole;
   people?: { person: FakePerson; role: TripRole }[];
+  /** Makes loading the member list fail, as a dropped connection would. */
+  membersFail?: boolean;
 }) {
   const people = options.people ?? [
     { person: alice, role: "organiser" },
@@ -42,8 +44,11 @@ async function show(options: {
     return () =>
       h(TripPeople, { trip: trip.value, onChanged: (next: Trip) => (trip.value = next) });
   });
+  const api: MembershipApi = options.membersFail
+    ? { ...fake.api, listMembers: async () => Promise.reject(new Error("Network down")) }
+    : fake.api;
   const wrapper = mount(Parent, {
-    global: { provide: { [membershipApiKey as symbol]: fake.api } },
+    global: { provide: { [membershipApiKey as symbol]: api } },
     attachTo: document.body,
   });
   await flushPromises();
@@ -91,6 +96,17 @@ describe("seeing who is in the trip", () => {
     });
 
     expect(listed(wrapper)).toContain("A member with no name");
+  });
+});
+
+describe("when the member list cannot be loaded", () => {
+  test("says so, and offers no invitation links rather than guessing whether the trip is full", async () => {
+    const wrapper = await show({ me: alice, myRole: "organiser", membersFail: true });
+
+    expect(wrapper.get('[role="alert"]').text()).toContain("Couldn't load who is in the trip");
+    expect(wrapper.text()).not.toContain("Invite people");
+    const labels = wrapper.findAll("button").map((b) => b.text());
+    expect(labels.some((l) => l.includes("link"))).toBe(false);
   });
 });
 

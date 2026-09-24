@@ -80,12 +80,13 @@ export function createFakeMembership(seed: {
       if ("refused" in link) throw new JoinError(link.refused);
 
       const list = membersOf(link.trip.id);
-      if (!list.some((m) => m.userId === seed.me.userId)) {
-        if (list.length >= MEMBER_LIMIT) throw new JoinError("full");
-        list.push({ ...seed.me, role: "member" });
-        joined.push({ ...link.trip, myRole: "member" });
+      if (list.some((m) => m.userId === seed.me.userId)) {
+        return { tripId: link.trip.id, joined: false };
       }
-      return link.trip.id;
+      if (list.length >= MEMBER_LIMIT) throw new JoinError("full");
+      list.push({ ...seed.me, role: "member" });
+      joined.push({ ...link.trip, myRole: "member" });
+      return { tripId: link.trip.id, joined: true };
     },
 
     async listMembers(tripId) {

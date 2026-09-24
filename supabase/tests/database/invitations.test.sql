@@ -193,9 +193,9 @@ select is_empty(
   $$ select id from public.trips $$,
   'before joining, the invitee reads no trip'
 );
-select is(
-  public.join_trip(repeat('v', 43)),
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid,
+select results_eq(
+  $$ select trip_id, joined from public.join_trip(repeat('v', 43)) $$,
+  $$ values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, true) $$,
   'opening a valid link joins the trip and answers with its id'
 );
 select results_eq(
@@ -225,9 +225,9 @@ select results_eq(
 );
 
 -- Opening it again is not an error: it just takes the member in.
-select is(
-  public.join_trip(repeat('v', 43)),
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid,
+select results_eq(
+  $$ select trip_id, joined from public.join_trip(repeat('v', 43)) $$,
+  $$ values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, false) $$,
   'opening the link again as a member answers with the trip, without error'
 );
 select is(
@@ -242,9 +242,9 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"}';
 
-select is(
-  public.join_trip(repeat('v', 43)),
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid,
+select results_eq(
+  $$ select trip_id, joined from public.join_trip(repeat('v', 43)) $$,
+  $$ values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, false) $$,
   'the organiser opening their own link is taken into the trip'
 );
 select results_eq(
@@ -321,9 +321,9 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "44444444-4444-4444-4444-444444444444", "role": "authenticated"}';
 
-select is(
-  public.join_trip(repeat('f', 43)),
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid,
+select results_eq(
+  $$ select trip_id, joined from public.join_trip(repeat('f', 43)) $$,
+  $$ values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, true) $$,
   'a departed member comes back with a link issued after they left'
 );
 select results_eq(

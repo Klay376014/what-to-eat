@@ -15,6 +15,12 @@ export interface Member {
   isMe: boolean;
 }
 
+export interface JoinResult {
+  tripId: string;
+  /** True when this made the caller a member; false when they already were. */
+  joined: boolean;
+}
+
 export interface Invitation extends InvitationTimes {
   id: string;
   token: string;
@@ -41,8 +47,11 @@ export class JoinError extends Error {
  * checked here.
  */
 export interface MembershipApi {
-  /** Joins the trip the token opens and returns its id; throws JoinError. */
-  joinTrip(token: string): Promise<string>;
+  /**
+   * Joins the trip the token opens; throws JoinError. `joined` is false when
+   * the caller was already a member, so nobody is welcomed twice.
+   */
+  joinTrip(token: string): Promise<JoinResult>;
   /** The trip's current members, the organiser first. */
   listMembers(tripId: string): Promise<Member[]>;
   removeMember(tripId: string, userId: string): Promise<void>;
@@ -118,13 +127,13 @@ export function createSupabaseMembershipApi(client: Client): MembershipApi {
 
   return {
     async joinTrip(token) {
-      const { data, error } = await client.rpc("join_trip", { token });
+      const { data, error } = await client.rpc("join_trip", { token }).single();
       if (error) {
         const reason = error.code === "P0001" ? joinReasons[error.message] : undefined;
         if (reason) throw new JoinError(reason);
         throw error;
       }
-      return data;
+      return { tripId: data.trip_id, joined: data.joined };
     },
 
     async listMembers(tripId) {

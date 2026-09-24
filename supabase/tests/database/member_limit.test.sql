@@ -47,9 +47,9 @@ insert into public.invitations (trip_id, token, created_by) values
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "0000000a-0000-0000-0000-000000000001", "role": "authenticated"}';
 
-select is(
-  public.join_trip(repeat('k', 43)),
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid,
+select results_eq(
+  $$ select trip_id, joined from public.join_trip(repeat('k', 43)) $$,
+  $$ values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, true) $$,
   'the eighth member joins; a departed member does not count towards the limit'
 );
 
@@ -74,9 +74,9 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "0000000a-0000-0000-0000-000000000001", "role": "authenticated"}';
 
-select is(
-  public.join_trip(repeat('k', 43)),
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid,
+select results_eq(
+  $$ select trip_id, joined from public.join_trip(repeat('k', 43)) $$,
+  $$ values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, false) $$,
   'a current member reopening the link of a full trip is taken in, not refused'
 );
 
@@ -140,9 +140,9 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "0000000a-0000-0000-0000-000000000002", "role": "authenticated"}';
 
-select is(
-  public.join_trip(repeat('k', 43)),
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid,
+select results_eq(
+  $$ select trip_id, joined from public.join_trip(repeat('k', 43)) $$,
+  $$ values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, true) $$,
   'with a place free, the next person joins'
 );
 

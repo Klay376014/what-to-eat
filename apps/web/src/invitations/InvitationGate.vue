@@ -22,7 +22,7 @@ const api = useMembershipApi();
 type State =
   | { kind: "idle" }
   | { kind: "joining" }
-  | { kind: "joined"; tripId: string }
+  | { kind: "joined"; tripId: string; isNew: boolean }
   | { kind: "failed"; reason: JoinFailureReason };
 
 const state = ref<State>(props.token ? { kind: "joining" } : { kind: "idle" });
@@ -36,7 +36,8 @@ const failure = computed(() =>
 onMounted(async () => {
   if (!props.token) return;
   try {
-    state.value = { kind: "joined", tripId: await api.joinTrip(props.token) };
+    const { tripId, joined } = await api.joinTrip(props.token);
+    state.value = { kind: "joined", tripId, isNew: joined };
   } catch (error) {
     state.value = {
       kind: "failed",
@@ -60,7 +61,8 @@ onMounted(async () => {
       <p>{{ failure.body }}</p>
       <div><BaseButton @click="showNotice = false">Dismiss</BaseButton></div>
     </section>
-    <BaseCard v-if="state.kind === 'joined'">
+    <!-- Only for someone new: a member reopening an old link just lands in the trip. -->
+    <BaseCard v-if="state.kind === 'joined' && state.isNew">
       <p role="status">You've joined the trip. Welcome aboard.</p>
     </BaseCard>
 

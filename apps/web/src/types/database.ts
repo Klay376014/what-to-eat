@@ -171,7 +171,13 @@ export type Database = {
           isSetofReturn: false;
         };
       };
-      join_trip: { Args: { token: string }; Returns: string };
+      join_trip: {
+        Args: { token: string };
+        Returns: {
+          joined: boolean;
+          trip_id: string;
+        }[];
+      };
       keepalive: { Args: never; Returns: number };
       leave_trip: { Args: { trip_id: string }; Returns: undefined };
       remove_member: {

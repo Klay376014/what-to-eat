@@ -183,7 +183,12 @@ const dialog = computed(() => {
       </li>
     </ul>
 
-    <InviteLinks v-if="isOrganiser && !loading" :trip="trip" :member-count="members.length" />
+    <!-- Only with a real member count: a failed load must not pass for an empty trip. -->
+    <InviteLinks
+      v-if="isOrganiser && !loading && !failure"
+      :trip="trip"
+      :member-count="members.length"
+    />
 
     <div class="leave">
       <div>

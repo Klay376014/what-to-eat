@@ -222,18 +222,22 @@ end;
 $$;
 
 -- Opening a link ----------------------------------------------------------------
--- Returns the trip's id, and only once the caller is in it. Every refusal
--- happens before anything about the trip is looked at, and names only what
--- went wrong with the link. A member opening the link again is simply taken
--- in, even when the trip is full or the link has since stopped working for
--- others, so reopening an old message is never an error for them.
+-- Returns one row, and only once the caller is in the trip: the trip's id,
+-- and `joined`, true when this call made them a member and false when they
+-- already were, so the app welcomes only people who are actually new.
+-- Every refusal happens before anything about the trip is looked at, and
+-- names only what went wrong with the link. A member opening the link again
+-- is simply taken in, even when the trip is full or the link has since
+-- stopped working for others, so reopening an old message is never an error
+-- for them.
 create function public.join_trip(token text)
-returns uuid
+returns table (trip_id uuid, joined boolean)
 language plpgsql
 volatile
 security definer
 set search_path = ''
 as $$
+#variable_conflict use_column
 declare
   caller uuid := (select auth.uid());
   invitation public.invitations;
@@ -259,7 +263,8 @@ begin
   for update;
 
   if found and membership.left_at is null then
-    return invitation.trip_id;
+    return query select invitation.trip_id, false;
+    return;
   end if;
 
   if invitation.revoked_at is not null then
@@ -285,7 +290,7 @@ begin
     values (invitation.trip_id, caller, 'member');
   end if;
 
-  return invitation.trip_id;
+  return query select invitation.trip_id, true;
 end;
 $$;
 

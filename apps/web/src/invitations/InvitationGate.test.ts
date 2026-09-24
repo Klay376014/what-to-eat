@@ -46,12 +46,16 @@ const taipei = aTrip({
 
 async function openWith(
   token: string | null,
-  options: { links?: Record<string, FakeLink>; myTrips?: Trip[] } = {},
+  options: { links?: Record<string, FakeLink>; myTrips?: Trip[]; alreadyIn?: string[] } = {},
 ) {
+  const alice = { userId: "alice", name: "Alice Chen", role: "organiser" as const };
+  const tokyoMembers = options.alreadyIn?.includes("tokyo")
+    ? [alice, { ...me, role: "member" as const }]
+    : [alice];
   const fake = createFakeMembership({
     me,
     links: options.links,
-    members: { tokyo: [{ userId: "alice", name: "Alice Chen", role: "organiser" }] },
+    members: { tokyo: tokyoMembers },
   });
   const trips = fake.tripsApi(createFakeTripsApi({ trips: options.myTrips ?? [taipei] }));
   const settled = vi.fn();
@@ -114,6 +118,17 @@ describe("opening a link for a trip I am already in", () => {
 
     expect(openTripName(wrapper)).toBe("Tokyo");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  test("does not welcome me as if I had just joined", async () => {
+    const { wrapper } = await openWith("again", {
+      links: { again: { trip: tokyo } },
+      myTrips: [taipei, tokyo],
+      alreadyIn: ["tokyo"],
+    });
+
+    expect(openTripName(wrapper)).toBe("Tokyo");
+    expect(wrapper.text()).not.toContain("You've joined");
   });
 });
 

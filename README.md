@@ -49,7 +49,7 @@ vp run ready      # check + test + build
 | `https://klay376014.github.io/what-to-eat/privacy.html` | 隱私權政策（`docs/privacy.md`） |
 | `https://klay376014.github.io/what-to-eat/app/`         | app（`apps/web`）               |
 
-首頁與隱私權政策是 Google OAuth 同意畫面登記的網址，不能搬。`deploy.yml` 先用 `vp build --base=/what-to-eat/app/` 把 app 建到 `docs/app/`（已 gitignore），再讓 Jekyll 建整個 `docs/`，一起上傳。app 沒有前端路由，狀態都在 query 參數裡，所以子路徑不需要 404 fallback；本機 `vp run dev` 仍然在 `/`。
+首頁與隱私權政策是 Google OAuth 同意畫面登記的網址，不能搬。`deploy.yml` 先用 `vp build --base=<Pages 的 base path>/app/`（base path 由 `actions/configure-pages` 取得，目前是 `/what-to-eat`）把 app 建到 `docs/app/`（已 gitignore），再讓 Jekyll 建整個 `docs/`，一起上傳。只部署 `main` 最新且 CI 通過的 commit：CI 跑完順序顛倒時，舊 commit 會跳過、由新 commit 的那次部署；手動觸發也做同樣檢查。app 沒有前端路由，狀態都在 query 參數裡，所以子路徑不需要 404 fallback；本機 `vp run dev` 仍然在 `/`。
 
 第一次部署前要手動做一次：
 

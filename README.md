@@ -32,10 +32,27 @@ vp run ready      # check + test + build
 
 - `.github/workflows/ci.yml`：PR 與 push 到 `main` 時跑 `vp check`、`vp run -r test`，並在 runner 上啟動本機 Supabase、套用 migrations、跑 `supabase test db`（pgTAP，測試放在 `supabase/tests/database/*.test.sql`）。本機沒有 Docker，資料庫測試只在 CI 跑。
 - `.github/workflows/keepalive.yml`：每 3 天（也可手動觸發）呼叫一次 hosted 專案的 `public.keepalive()`，避免免費方案閒置被暫停。結果寫在該次 run 的 Summary。
+- `.github/workflows/deploy.yml`：push 到 `main` 的 CI 通過後（也可手動觸發），把 `docs/`（Jekyll）和 `apps/web` 建成同一個 GitHub Pages 網站並部署。
 
 需要的 repository secrets（Settings → Secrets and variables → Actions）：
 
-| Secret                     | 用途                                                            |
-| -------------------------- | --------------------------------------------------------------- |
-| `SUPABASE_PROJECT_REF`     | hosted 專案的 ref（與 `.env` 相同）                             |
-| `SUPABASE_PUBLISHABLE_KEY` | publishable key（Project Settings → API Keys），給 keepalive 用 |
+| Secret                     | 用途                                                                       |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `SUPABASE_PROJECT_REF`     | hosted 專案的 ref（與 `.env` 相同），keepalive 與部署用                    |
+| `SUPABASE_PUBLISHABLE_KEY` | publishable key（Project Settings → API Keys），keepalive 與部署時編進前端 |
+
+## 部署（GitHub Pages）
+
+| 網址                                                    | 內容                            |
+| ------------------------------------------------------- | ------------------------------- |
+| `https://klay376014.github.io/what-to-eat/`             | 首頁（`docs/index.md`）         |
+| `https://klay376014.github.io/what-to-eat/privacy.html` | 隱私權政策（`docs/privacy.md`） |
+| `https://klay376014.github.io/what-to-eat/app/`         | app（`apps/web`）               |
+
+首頁與隱私權政策是 Google OAuth 同意畫面登記的網址，不能搬。`deploy.yml` 先用 `vp build --base=<Pages 的 base path>/app/`（base path 由 `actions/configure-pages` 取得，目前是 `/what-to-eat`）把 app 建到 `docs/app/`（已 gitignore），再讓 Jekyll 建整個 `docs/`，一起上傳。只部署 `main` 最新且 CI 通過的 commit：CI 跑完順序顛倒時，舊 commit 會跳過、由新 commit 的那次部署；手動觸發也做同樣檢查。app 沒有前端路由，狀態都在 query 參數裡，所以子路徑不需要 404 fallback；本機 `vp run dev` 仍然在 `/`。
+
+第一次部署前要手動做一次：
+
+1. Settings → Pages → Build and deployment → Source 改成 **GitHub Actions**（原本是 Deploy from a branch `main:/docs`）。
+2. Supabase dashboard → Authentication → URL Configuration → Redirect URLs 加上 `https://klay376014.github.io/what-to-eat/app/**`（結尾 `/**` 不能省，原因見上面「登入」第 3 點）。要讓正式網址當預設的話，Site URL 也改成 `https://klay376014.github.io/what-to-eat/app/`。
+3. 部署後實測：Google 登入後回到 app、建立旅程、用無痕視窗開邀請連結會看到邀請畫面。

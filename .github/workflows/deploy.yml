@@ -1,0 +1,164 @@
+name: Deploy
+
+# Publishes one GitHub Pages site: the Jekyll pages in docs/ at the root (the
+# homepage and privacy policy Google's OAuth consent screen links to, so their
+# URLs must not move) and apps/web under app/.
+#
+# It deploys only main's head, and only once CI has passed for it: it waits on
+# the CI run of a push to main rather than repeating its checks. A manual run
+# gets the same checks.
+#
+# Requires Settings > Pages > Source set to "GitHub Actions".
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pages
+  # A half-finished deploy is worse than a queued one.
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Check the commit is main's head and passed CI
+    # `event == 'push'` keeps out pull requests whose head branch is also
+    # called main (a fork's, say): the branches filter matches those too.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      || (github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      deploy: ${{ steps.check.outputs.deploy }}
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # A workflow_run event's github.sha is main's head at trigger time,
+          # which may be newer than the commit CI checked.
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          # CI lets every push to main finish, so runs can complete out of
+          # order. Deploying a commit that is no longer main's head would put
+          # an older site over a newer one; the newer commit's CI run deploys.
+          head="$(gh api "repos/${REPO}/commits/main" --jq .sha)"
+          if [ "$SHA" != "$head" ]; then
+            {
+              echo "## :fast_forward: Not deployed"
+              echo
+              echo "\`${SHA}\` is no longer main's head (\`${head}\`); that commit's CI run deploys instead."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          passed="$(gh api "repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=push&status=success&per_page=1" --jq .total_count)"
+          if [ "$passed" = 0 ]; then
+            {
+              echo "## :x: Not deployed"
+              echo
+              echo "CI has not passed for \`${SHA}\` yet. Wait for it, then run this again."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::CI has not passed for ${SHA}"
+            exit 1
+          fi
+
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build site
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: read
+    env:
+      DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+
+      # The site's base path ("/what-to-eat"), so the app's base is not
+      # hard-coded to the repository name.
+      - id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - uses: voidzero-dev/setup-vp@3754dd7dbdb32bd8f6d28b6043de13ad3a75f21f # v1.21.1
+        with:
+          node-version-file: .nvmrc
+          cache: true
+
+      # The Supabase URL and publishable key are compiled into the bundle. The
+      # key is meant for browsers (RLS protects the data), but it still lives
+      # in secrets so the repo holds no project details.
+      - name: Build the app into docs/app
+        working-directory: apps/web
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          BASE: ${{ steps.pages.outputs.base_path }}/app/
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -n "${SUPABASE_PROJECT_REF:-}" ] || missing+=(SUPABASE_PROJECT_REF)
+          [ -n "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ] || missing+=(SUPABASE_PUBLISHABLE_KEY)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            {
+              echo "## :x: Not deployed"
+              echo
+              echo "Missing repository secret(s): \`${missing[*]}\`."
+              echo "Add them under Settings > Secrets and variables > Actions."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Missing repository secret(s): ${missing[*]}"
+            exit 1
+          fi
+
+          # Direct `vp build`, not `vp run`: a task would run in a clean
+          # environment and could replay a build made with other values.
+          # Jekyll copies docs/app through as static files (nothing in it has
+          # front matter), which spares writing into its root-owned output.
+          VITE_SUPABASE_URL="https://${SUPABASE_PROJECT_REF}.supabase.co" \
+            vp build --base="$BASE" --outDir ../../docs/app --emptyOutDir
+
+      - uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
+        with:
+          source: ./docs
+          destination: ./_site
+          build_revision: ${{ env.DEPLOY_SHA }}
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}app/
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

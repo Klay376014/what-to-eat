@@ -31,3 +31,6 @@ dist-ssr
 
 # AI agent worktrees
 .claude/worktrees/
+
+# Built app, copied into the Pages site by .github/workflows/deploy.yml
+docs/app/

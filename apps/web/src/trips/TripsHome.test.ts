@@ -179,11 +179,28 @@ describe("editing a trip", () => {
     ]);
   });
 
+  test("the warning says those meals will go missing from the grid, and what to do", async () => {
+    const wrapper = await mountHome(withMeals());
+
+    await shortenTokyo(wrapper);
+
+    const warning = wrapper.get('[role="alertdialog"]');
+    expect(warning.text()).toContain("These meals fall outside the new dates.");
+    expect(warning.text()).toContain(
+      "They won't appear in the trip grid until the dates include them again.",
+    );
+    expect(warning.text()).toContain("Check them with the group, or re-add them on the new days.");
+    // The confirm button names the consequence; the safe choice has the focus.
+    expect(buttonByText(wrapper, "Change dates and hide these meals").exists()).toBe(true);
+    await flushPromises(); // the dialog moves focus once it has opened
+    expect(document.activeElement).toBe(buttonByText(wrapper, "Keep editing").element);
+  });
+
   test("the date change goes ahead once confirmed", async () => {
     const wrapper = await mountHome(withMeals());
 
     await shortenTokyo(wrapper);
-    await buttonByText(wrapper, "Change dates anyway").trigger("click");
+    await buttonByText(wrapper, "Change dates and hide these meals").trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
@@ -213,6 +230,19 @@ describe("editing a trip", () => {
 
     expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
     expect(wrapper.text()).toMatch(/Oct 6, 2026|6 Oct 2026/);
+  });
+
+  test("no warning when the dates are cleared: an undated trip shows every meal", async () => {
+    const wrapper = await mountHome(withMeals());
+
+    await buttonByText(wrapper, "Edit trip").trigger("click");
+    await fieldByLabel(wrapper, "Start date").setValue("");
+    await fieldByLabel(wrapper, "End date").setValue("");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("No dates — for everyday use");
   });
 });
 

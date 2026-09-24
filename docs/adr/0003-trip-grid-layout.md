@@ -92,6 +92,17 @@ Why C, over the other two:
     clearing dates still needs no out-of-range warning.
   - If #7's data model cannot date everyday meals, this decision must be
     revisited there.
+- **Meals outside a dated trip's new dates (decided in #7).**
+  - When the organiser moves a dated trip's dates past existing meals, those
+    meals are kept but hidden: the strip shows only the trip's days, and no
+    tab is added for the stranded meals.
+  - The date-change warning is what makes that visible. It lists the
+    meals, says they will not appear in the grid until the dates include
+    them again, and asks the organiser to check them with the group or
+    re-add them on the new days. Its confirm button says so: "Change dates
+    and hide these meals", with "Keep editing" as the focused, safe choice.
+  - Clearing the dates still raises no warning, because an undated trip
+    shows every meal on its own date.
 - **Which tab opens by default.**
   1. During the trip, open today.
   2. Before the trip starts, open the first day with a gap (a meal not

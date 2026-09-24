@@ -8,6 +8,27 @@ export type Database = {
   };
   public: {
     Tables: {
+      profiles: {
+        Row: {
+          avatar_url: string | null;
+          display_name: string | null;
+          id: string;
+          updated_at: string;
+        };
+        Insert: {
+          avatar_url?: string | null;
+          display_name?: string | null;
+          id: string;
+          updated_at?: string;
+        };
+        Update: {
+          avatar_url?: string | null;
+          display_name?: string | null;
+          id?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       trip_members: {
         Row: {
           joined_at: string;

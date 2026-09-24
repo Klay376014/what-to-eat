@@ -45,6 +45,12 @@ describe("validateMapsLink", () => {
     expect(validateMapsLink("Afuri Ramen")).toBe(fix);
   });
 
+  test("a link missing the // after https: is refused, as the database would refuse it", () => {
+    const fix = "Paste the whole link, starting with https://";
+    expect(validateMapsLink("https:maps.app.goo.gl/AbCdEf123")).toBe(fix);
+    expect(validateMapsLink("https:/maps.app.goo.gl/AbCdEf123")).toBe(fix);
+  });
+
   test("an absurdly long link is refused", () => {
     expect(validateMapsLink(`https://maps.app.goo.gl/${"x".repeat(2000)}`)).toBe(
       "That link is too long to keep.",

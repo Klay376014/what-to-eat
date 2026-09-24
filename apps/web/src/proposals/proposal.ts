@@ -59,6 +59,8 @@ export function validateMapsLink(link: string): string | null {
   const trimmed = link.trim();
   if (trimmed.length === 0) return null;
   if (trimmed.length > MAX_LINK_LENGTH) return "That link is too long to keep.";
+  // The database insists on the "//" too; `new URL` alone accepts "https:host".
+  if (!/^https?:\/\//i.test(trimmed)) return "Paste the whole link, starting with https://";
   let url: URL;
   try {
     url = new URL(trimmed);

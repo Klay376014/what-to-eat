@@ -4,6 +4,8 @@
 // the real policies (supabase/tests/database/ does that).
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { membershipApiKey } from "../invitations/membershipApi.ts";
+import { createFakeMembership } from "../test/fakeMembershipApi.ts";
 import { aTrip, createFakeTripsApi } from "../test/fakeTripsApi.ts";
 import { buttonByText, fieldByLabel } from "../test/dom.ts";
 import { tripsApiKey, type TripsApi } from "./tripsApi.ts";
@@ -22,7 +24,14 @@ afterEach(() => {
 
 async function mountHome(api: TripsApi) {
   const wrapper = mount(TripsHome, {
-    global: { provide: { [tripsApiKey as symbol]: api } },
+    global: {
+      provide: {
+        [tripsApiKey as symbol]: api,
+        // #6: the trip view also shows its members.
+        [membershipApiKey as symbol]: createFakeMembership({ me: { userId: "me", name: "Me" } })
+          .api,
+      },
+    },
     attachTo: document.body,
   });
   await flushPromises();

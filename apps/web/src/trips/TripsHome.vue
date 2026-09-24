@@ -10,6 +10,11 @@ import CreateTripForm from "./CreateTripForm.vue";
 import EditTripForm from "./EditTripForm.vue";
 import { pickDefaultTrip, type Trip } from "./trip.ts";
 import { useTripsApi } from "./tripsApi.ts";
+// #6: members and invitations.
+import TripPeople from "../members/TripPeople.vue";
+
+// #6: the trip an invitation link just joined; opened instead of the default.
+const props = defineProps<{ openTripId?: string | null }>();
 
 const api = useTripsApi();
 
@@ -26,7 +31,10 @@ async function load() {
   failure.value = null;
   try {
     trips.value = await api.listTrips();
-    selectedId.value = pickDefaultTrip(trips.value, new Date())?.id ?? null;
+    selectedId.value =
+      trips.value.find((t) => t.id === props.openTripId)?.id ??
+      pickDefaultTrip(trips.value, new Date())?.id ??
+      null;
   } catch (error) {
     failure.value = `Couldn't load your trips: ${errorMessage(error)}`;
   } finally {
@@ -122,6 +130,15 @@ function formatDate(date: string): string {
         <BaseButton @click="mode = 'edit'"><BaseIcon name="pencil-simple" /> Edit trip</BaseButton>
       </div>
     </BaseCard>
+
+    <!-- #6: who is in the trip, invitations, leaving and handing over. -->
+    <TripPeople
+      v-if="selected"
+      :key="selected.id"
+      :trip="selected"
+      @left="onDeleted"
+      @changed="onSaved"
+    />
   </div>
 </template>
 

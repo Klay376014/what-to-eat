@@ -46,17 +46,18 @@ async function submit() {
   errors.value = validateTripSettings(settings);
   if (Object.keys(errors.value).length > 0) return;
 
+  let affected: DatedContent[] = [];
   await run(async () => {
     if (datesChanged()) {
-      const affected = contentOutsideRange(await api.listDatedContent(props.trip.id), settings);
+      affected = contentOutsideRange(await api.listDatedContent(props.trip.id), settings);
       // A warning, not a block: the organiser decides.
-      if (affected.length > 0) {
-        stranded.value = affected;
-        return;
-      }
+      if (affected.length > 0) return;
     }
     emit("saved", await api.updateTrip(props.trip.id, { ...settings }));
   }, "Couldn't save the trip");
+  // Opened only once the check is over: while busy, the dialog's buttons are
+  // disabled, and "Keep editing" could not take the focus it opens with.
+  if (affected.length > 0) stranded.value = affected;
 }
 
 async function saveAnyway() {
@@ -84,15 +85,17 @@ async function deleteTrip() {
   <ConfirmDialog
     :open="stranded !== null"
     title="Some meals would fall outside the new dates"
-    confirm-label="Change dates anyway"
+    confirm-label="Change dates and hide these meals"
     cancel-label="Keep editing"
     :busy="busy"
     @confirm="saveAnyway"
     @cancel="stranded = null"
   >
+    <!-- Stranded meals are hidden from the grid, not shown there (ADR 0003):
+         this warning is the one place that says so. -->
     <p>
-      These stay in the trip, but they will no longer be on any of its days. Check them before you
-      go ahead.
+      These meals fall outside the new dates. They won't appear in the trip grid until the dates
+      include them again. Check them with the group, or re-add them on the new days.
     </p>
     <ul>
       <li v-for="item in stranded" :key="item.id">{{ item.label }}</li>

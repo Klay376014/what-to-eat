@@ -6,6 +6,8 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h } from "vue";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { mealsApiKey } from "../grid/mealsApi.ts";
+import { createFakeMealsApi } from "../test/fakeMealsApi.ts";
 import { createFakeMembership, type FakeLink } from "../test/fakeMembershipApi.ts";
 import { aTrip, createFakeTripsApi } from "../test/fakeTripsApi.ts";
 import type { Trip } from "../trips/trip.ts";
@@ -73,7 +75,12 @@ async function openWith(
   );
   const wrapper = mount(Harness, {
     global: {
-      provide: { [tripsApiKey as symbol]: trips, [membershipApiKey as symbol]: fake.api },
+      provide: {
+        [tripsApiKey as symbol]: trips,
+        [membershipApiKey as symbol]: fake.api,
+        // #7: the trip view also shows the trip grid.
+        [mealsApiKey as symbol]: createFakeMealsApi(),
+      },
     },
     attachTo: document.body,
   });

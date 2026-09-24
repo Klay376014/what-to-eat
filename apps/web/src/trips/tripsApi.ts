@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { inject, type InjectionKey } from "vue";
+import { mealContentLabel } from "../grid/meal.ts";
 import type { Database } from "../types/database.ts";
 import type { DatedContent, Trip, TripSettings } from "./trip.ts";
 
@@ -130,12 +131,17 @@ export function createSupabaseTripsApi(client: Client): TripsApi {
       if (data.length === 0) throw new Error("Only the organiser can delete this trip.");
     },
 
-    async listDatedContent(_tripId) {
-      // TODO(#7): meals arrive with the trip grid. Until then a trip holds
-      // nothing that lives on a day, so no date change can strand anything.
-      // Once `meals` exists, return each meal here as
-      // { id, date, label: "<slot>, <date>" }.
-      return [];
+    async listDatedContent(tripId) {
+      // Every meal, so the date-change warning lists each one that would
+      // fall outside the new range (#5, #7).
+      const { data, error } = await client
+        .from("meals")
+        .select("id, date, slot, label")
+        .eq("trip_id", tripId)
+        .order("date", { ascending: true })
+        .order("position", { ascending: true });
+      if (error) throw error;
+      return data.map((meal) => ({ id: meal.id, date: meal.date, label: mealContentLabel(meal) }));
     },
   };
 }

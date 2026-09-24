@@ -46,6 +46,44 @@ export type Database = {
           },
         ];
       };
+      meals: {
+        Row: {
+          created_at: string;
+          date: string;
+          id: string;
+          label: string | null;
+          position: number;
+          slot: Database["public"]["Enums"]["meal_slot"];
+          trip_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          date: string;
+          id?: string;
+          label?: string | null;
+          position?: never;
+          slot: Database["public"]["Enums"]["meal_slot"];
+          trip_id: string;
+        };
+        Update: {
+          created_at?: string;
+          date?: string;
+          id?: string;
+          label?: string | null;
+          position?: never;
+          slot?: Database["public"]["Enums"]["meal_slot"];
+          trip_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "meals_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       profiles: {
         Row: {
           avatar_url: string | null;
@@ -194,6 +232,7 @@ export type Database = {
       };
     };
     Enums: {
+      meal_slot: "breakfast" | "lunch" | "dinner" | "other";
       trip_role: "organiser" | "member";
     };
     CompositeTypes: {
@@ -320,6 +359,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      meal_slot: ["breakfast", "lunch", "dinner", "other"],
       trip_role: ["organiser", "member"],
     },
   },

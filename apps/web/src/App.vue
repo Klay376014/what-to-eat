@@ -3,6 +3,7 @@ import { computed, provide, ref } from "vue";
 import AccountMenu, { type AccountUser } from "./account/AccountMenu.vue";
 import { signInWithGoogle, signOut, useSession } from "./auth/auth.ts";
 import SignIn from "./auth/SignIn.vue";
+import { createSupabaseMealsApi, mealsApiKey } from "./grid/mealsApi.ts";
 import { errorMessage } from "./lib/errors.ts";
 import { supabase } from "./lib/supabase.ts";
 import { createSupabaseTripsApi, tripsApiKey } from "./trips/tripsApi.ts";
@@ -15,6 +16,7 @@ import BaseButton from "./ui/BaseButton.vue";
 import BaseCard from "./ui/BaseCard.vue";
 
 provide(tripsApiKey, createSupabaseTripsApi(supabase));
+provide(mealsApiKey, createSupabaseMealsApi(supabase));
 provide(membershipApiKey, createSupabaseMembershipApi(supabase));
 
 // #6: an invitation captured from the address at startup (main.ts). Used

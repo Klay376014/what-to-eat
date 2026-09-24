@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import TripGrid from "../grid/TripGrid.vue";
 import { errorMessage } from "../lib/errors.ts";
 import BaseButton from "../ui/BaseButton.vue";
 import BaseCard from "../ui/BaseCard.vue";
@@ -131,6 +132,8 @@ function formatDate(date: string): string {
       </div>
     </BaseCard>
 
+    <!-- The trip grid (#7): the trip's days and their meals. -->
+    <TripGrid v-if="selected" :key="selected.id" :trip="selected" />
     <!-- #6: who is in the trip, invitations, leaving and handing over. -->
     <TripPeople
       v-if="selected"

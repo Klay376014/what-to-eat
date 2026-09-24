@@ -92,6 +92,17 @@ Why C, over the other two:
     clearing dates still needs no out-of-range warning.
   - If #7's data model cannot date everyday meals, this decision must be
     revisited there.
+- **Meals outside a dated trip's new dates (decided in #7).**
+  - When the organiser moves a dated trip's dates past existing meals, those
+    meals are kept but hidden: the strip shows only the trip's days, and no
+    tab is added for the stranded meals.
+  - The date-change warning is what makes that visible. It lists the
+    meals, says they will not appear in the grid until the dates include
+    them again, and asks the organiser to check them with the group or
+    re-add them on the new days. Its confirm button says so: "Change dates
+    and hide these meals", with "Keep editing" as the focused, safe choice.
+  - Clearing the dates still raises no warning, because an undated trip
+    shows every meal on its own date.
 - **Which tab opens by default.**
   1. During the trip, open today.
   2. Before the trip starts, open the first day with a gap (a meal not
@@ -101,9 +112,17 @@ Why C, over the other two:
   - Why: during the trip, today is what people act on. Before it, planning is
     the job, so the app opens where planning is needed. After it, the record
     reads from the start.
-  - Always, before any of these: a day in the URL (`?day=2026-10-16`) wins, so
-    a shared link or a later digest email can open a specific day. Going back
-    to the grid returns to the day you left.
+  - Always, before any of these: a day in the URL wins, so a shared link or a
+    later digest email can open a specific day. Going back to the grid returns
+    to the day you left.
+  - The day is scoped to its trip: `?trip=<trip id>&day=2026-10-16`. A trip's
+    grid honours `day` only when `trip` names that trip, so a day chosen in
+    one trip never follows you into another, whether you switch trips or a
+    reload opens on a different one. (Added in #7 review: a bare `?day=` leaked
+    across trips.)
+  - Opening the trip that `?trip=` names, so a digest link lands on the right
+    trip as well as the right day, is left to a later change to the trip
+    selection. Until then the day applies when the app opens on that trip.
 
 ## Consequences
 

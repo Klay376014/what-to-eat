@@ -1,4 +1,4 @@
-/* Shared by TextField and SelectField. */
+/* Shared by TextField, TextAreaField and SelectField. */
 .field {
   display: flex;
   flex-direction: column;

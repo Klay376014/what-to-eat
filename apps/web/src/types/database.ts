@@ -105,6 +105,56 @@ export type Database = {
         };
         Relationships: [];
       };
+      proposals: {
+        Row: {
+          created_at: string;
+          id: string;
+          lat: number | null;
+          lng: number | null;
+          meal_id: string;
+          name_locked_at: string | null;
+          note: string | null;
+          place_cid: string | null;
+          place_name: string;
+          proposed_by: string | null;
+          source_url: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          lat?: number | null;
+          lng?: number | null;
+          meal_id: string;
+          name_locked_at?: string | null;
+          note?: string | null;
+          place_cid?: string | null;
+          place_name: string;
+          proposed_by?: string | null;
+          source_url?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          lat?: number | null;
+          lng?: number | null;
+          meal_id?: string;
+          name_locked_at?: string | null;
+          note?: string | null;
+          place_cid?: string | null;
+          place_name?: string;
+          proposed_by?: string | null;
+          source_url?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "proposals_meal_id_fkey";
+            columns: ["meal_id"];
+            isOneToOne: false;
+            referencedRelation: "meals";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       trip_members: {
         Row: {
           joined_at: string;

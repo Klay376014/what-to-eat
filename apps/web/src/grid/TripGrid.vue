@@ -88,6 +88,14 @@ const rename: RenameMeal = async (mealId, label) => {
   meals.value = meals.value.map((m) => (m.id === mealId ? { ...m, label: renamed.label } : m));
 };
 
+/**
+ * Keeps a meal's marker in step with its details: a proposal just made, or
+ * others' proposals that arrived since the grid loaded.
+ */
+function updateProposalCount(mealId: string, count: number) {
+  meals.value = meals.value.map((m) => (m.id === mealId ? { ...m, proposals: count } : m));
+}
+
 const add: AddMeal = async (meal) => {
   const input =
     meal.slot === "other"
@@ -141,7 +149,14 @@ const add: AddMeal = async (meal) => {
       </BaseCard>
 
       <BaseCard :id="panelId" role="tabpanel" :aria-labelledby="`${tabIdPrefix}-${activeDay}`">
-        <DayTrail :date="activeDay" :trail="trail" :add="add" :rename="rename" />
+        <DayTrail
+          :date="activeDay"
+          :trail="trail"
+          :add="add"
+          :rename="rename"
+          :time-zone="trip.timezone"
+          @proposal-count="updateProposalCount"
+        />
       </BaseCard>
     </template>
   </section>

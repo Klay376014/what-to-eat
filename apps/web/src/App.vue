@@ -6,6 +6,7 @@ import SignIn from "./auth/SignIn.vue";
 import { createSupabaseMealsApi, mealsApiKey } from "./grid/mealsApi.ts";
 import { errorMessage } from "./lib/errors.ts";
 import { supabase } from "./lib/supabase.ts";
+import { createSupabaseProposalsApi, proposalsApiKey } from "./proposals/proposalsApi.ts";
 import { createSupabaseTripsApi, tripsApiKey } from "./trips/tripsApi.ts";
 import TripsHome from "./trips/TripsHome.vue";
 // #6: invitation links and membership.
@@ -17,6 +18,7 @@ import BaseCard from "./ui/BaseCard.vue";
 
 provide(tripsApiKey, createSupabaseTripsApi(supabase));
 provide(mealsApiKey, createSupabaseMealsApi(supabase));
+provide(proposalsApiKey, createSupabaseProposalsApi(supabase));
 provide(membershipApiKey, createSupabaseMembershipApi(supabase));
 
 // #6: an invitation captured from the address at startup (main.ts). Used

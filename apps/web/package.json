@@ -11,12 +11,15 @@
     "type-check": "vue-tsc -b --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "catalog:",
     "vue": "^3.5.42"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/test-utils": "catalog:",
     "@vue/tsconfig": "^0.9.1",
+    "happy-dom": "catalog:",
     "typescript": "~6.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:",

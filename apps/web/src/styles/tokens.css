@@ -1,0 +1,202 @@
+/*
+ * Design tokens: the Cartographer direction chosen in #19
+ * (docs/adr/0002-visual-direction.md). Components read these custom
+ * properties and never hard-code colours, sizes or fonts.
+ *
+ * Sunlight rules (from the ADR): the contour texture stays at --texture-pct
+ * 14% or lower and lives on the page backdrop only, never under text (text
+ * always sits on a solid surface); every text pair meets WCAG AA in both
+ * themes (checked by tokens.test.ts).
+ *
+ * Light is the default. Dark follows the system unless the page forces a
+ * theme with data-theme="light" or data-theme="dark" on <html>.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Type, shape, spacing and motif tokens (both themes) */
+  --font-heading: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body: "Cabin", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --body-weight: 400;
+  --heading-weight: 600;
+  --label-weight: 600;
+  --strong-weight: 600;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --line-height: 1.5;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --radius-control: 8px;
+  --radius-button: 999px;
+  --radius-card: 12px;
+  --radius-slot: 10px;
+  --radius-dialog: 16px;
+  --border-width: 1px;
+  --control-border-width: 2px;
+  --card-border-width: 1px;
+  --focus-width: 3px;
+  --icon-stroke: 2;
+  --transition: 180ms ease-out;
+  --page-texture:
+    repeating-radial-gradient(
+      circle at 18% 22%,
+      transparent 0 26px,
+      var(--texture-soft) 26px 27.5px
+    ),
+    repeating-radial-gradient(
+      circle at 88% 70%,
+      transparent 0 34px,
+      var(--texture-soft) 34px 35.5px
+    );
+  --texture-pct: 14%;
+  --route-dot-size: 14px;
+  --route-dot-radius: 50% 50% 50% 0;
+  --route-dot-rotate: -45deg;
+
+  /* Colour (light) */
+  --bg: #f4efe1;
+  --surface: #fbf8ef;
+  --surface-2: #ede6d2;
+  --text: #1d3240;
+  --muted: #4a5a5e;
+  --border: #d6cdb4;
+  --border-strong: #6f7a70;
+  --link: #0b5e7e;
+  --primary: #0b5e7e;
+  --on-primary: #ffffff;
+  --secondary: #fbf8ef;
+  --on-secondary: #1d3240;
+  --secondary-border: #6f7a70;
+  --danger: #a8321e;
+  --on-danger: #ffffff;
+  --danger-text: #a8321e;
+  --focus: #0b5e7e;
+  --empty-bg: #fbf8ef;
+  --empty-fg: #4a5a5e;
+  --empty-border: #6f7a70;
+  --discuss-bg: #f8d9b5;
+  --discuss-fg: #6a2c0a;
+  --discuss-border: #c9571f;
+  --decided-bg: #2f5d3a;
+  --decided-fg: #ffffff;
+  --decided-border: #2f5d3a;
+  --up: #2f5d3a;
+  --on-up: #ffffff;
+  --down: #a8321e;
+  --on-down: #ffffff;
+  --avatar-bg: #d5e8ee;
+  --avatar-fg: #1d3240;
+  --warning-bg: #fbebd8;
+  --warning-border: #c9571f;
+  --scrim: rgb(29 50 64 / 0.5);
+  --shadow-card: 0 1px 0 rgb(29 50 64 / 0.08), 0 6px 16px -8px rgb(29 50 64 / 0.25);
+  --shadow-button: none;
+  --shadow-dialog: 0 18px 40px -10px rgb(29 50 64 / 0.4);
+  --texture-ink: #8fa3a0;
+  --route: #c9571f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f1a1f;
+    --surface: #16242b;
+    --surface-2: #1e2f37;
+    --text: #e8e2d0;
+    --muted: #b5b9ae;
+    --border: #2e4148;
+    --border-strong: #7b8b86;
+    --link: #7fd0ee;
+    --primary: #7fd0ee;
+    --on-primary: #06222d;
+    --secondary: #16242b;
+    --on-secondary: #e8e2d0;
+    --secondary-border: #7b8b86;
+    --danger: #ff9c8a;
+    --on-danger: #2a0b05;
+    --danger-text: #ffa898;
+    --focus: #f29a5e;
+    --empty-bg: #16242b;
+    --empty-fg: #b5b9ae;
+    --empty-border: #7b8b86;
+    --discuss-bg: #4a2a10;
+    --discuss-fg: #ffd5ae;
+    --discuss-border: #f29a5e;
+    --decided-bg: #8fcb9b;
+    --decided-fg: #0e2414;
+    --decided-border: #8fcb9b;
+    --up: #8fcb9b;
+    --on-up: #0e2414;
+    --down: #ff9c8a;
+    --on-down: #2a0b05;
+    --avatar-bg: #1e3a45;
+    --avatar-fg: #d5e8ee;
+    --warning-bg: #2a2014;
+    --warning-border: #f29a5e;
+    --scrim: rgb(0 0 0 / 0.7);
+    --shadow-card: 0 6px 16px -8px rgb(0 0 0 / 0.7);
+    --shadow-button: none;
+    --shadow-dialog: 0 18px 40px -10px rgb(0 0 0 / 0.8);
+    --texture-ink: #4f6a70;
+    --route: #f29a5e;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1a1f;
+  --surface: #16242b;
+  --surface-2: #1e2f37;
+  --text: #e8e2d0;
+  --muted: #b5b9ae;
+  --border: #2e4148;
+  --border-strong: #7b8b86;
+  --link: #7fd0ee;
+  --primary: #7fd0ee;
+  --on-primary: #06222d;
+  --secondary: #16242b;
+  --on-secondary: #e8e2d0;
+  --secondary-border: #7b8b86;
+  --danger: #ff9c8a;
+  --on-danger: #2a0b05;
+  --danger-text: #ffa898;
+  --focus: #f29a5e;
+  --empty-bg: #16242b;
+  --empty-fg: #b5b9ae;
+  --empty-border: #7b8b86;
+  --discuss-bg: #4a2a10;
+  --discuss-fg: #ffd5ae;
+  --discuss-border: #f29a5e;
+  --decided-bg: #8fcb9b;
+  --decided-fg: #0e2414;
+  --decided-border: #8fcb9b;
+  --up: #8fcb9b;
+  --on-up: #0e2414;
+  --down: #ff9c8a;
+  --on-down: #2a0b05;
+  --avatar-bg: #1e3a45;
+  --avatar-fg: #d5e8ee;
+  --warning-bg: #2a2014;
+  --warning-border: #f29a5e;
+  --scrim: rgb(0 0 0 / 0.7);
+  --shadow-card: 0 6px 16px -8px rgb(0 0 0 / 0.7);
+  --shadow-button: none;
+  --shadow-dialog: 0 18px 40px -10px rgb(0 0 0 / 0.8);
+  --texture-ink: #4f6a70;
+  --route: #f29a5e;
+}
+
+/* Texture colour: texture-ink at texture-pct. */
+:root {
+  --texture-soft: color-mix(in srgb, var(--texture-ink) var(--texture-pct), transparent);
+}

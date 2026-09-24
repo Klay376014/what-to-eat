@@ -216,7 +216,7 @@ describe("the day tabs", () => {
   });
 
   test("the right and left arrow keys move between days, taking the focus along", async () => {
-    history.replaceState(null, "", "/?day=2026-10-02");
+    history.replaceState(null, "", "/?trip=tokyo&day=2026-10-02");
     const wrapper = await mountGrid(tokyo);
     selectedTab(wrapper).element.focus();
 
@@ -231,7 +231,7 @@ describe("the day tabs", () => {
   });
 
   test("the arrow keys wrap around at either end, and Home and End jump there", async () => {
-    history.replaceState(null, "", "/?day=2026-10-01");
+    history.replaceState(null, "", "/?trip=tokyo&day=2026-10-01");
     const wrapper = await mountGrid(tokyo);
 
     await selectedTab(wrapper).trigger("keydown", { key: "ArrowLeft" });
@@ -254,7 +254,7 @@ describe("the day tabs", () => {
 
 describe("which day opens", () => {
   test("a day in the link opens first", async () => {
-    history.replaceState(null, "", "/?day=2026-10-04");
+    history.replaceState(null, "", "/?trip=tokyo&day=2026-10-04");
     const wrapper = await mountGrid(tokyo);
 
     expect(selectedTab(wrapper).text()).toContain("4 Oct");
@@ -290,6 +290,45 @@ describe("which day opens", () => {
     const again = await mountGrid(tokyo);
     expect(selectedTab(again).text()).toContain("5 Oct");
   });
+
+  test("a day chosen in one trip does not follow you into another", async () => {
+    const wrapper = await mountGrid(tokyo);
+    await tabFor(wrapper, "3 Oct").trigger("click");
+    wrapper.unmount();
+
+    // Switching trips, or a reload that opens on a different trip.
+    const other = await mountGrid(everyday);
+
+    expect(tabTexts(other)).toEqual(["Today 24 Sep 3 gaps"]);
+    expect(selectedTab(other).text()).toContain("Today");
+  });
+
+  test("a day chosen in another dated trip does not pick the day here", async () => {
+    const osaka = { ...tokyo, id: "osaka", name: "Osaka" };
+    const wrapper = await mountGrid(osaka);
+    await tabFor(wrapper, "5 Oct").trigger("click");
+    wrapper.unmount();
+
+    const again = await mountGrid(tokyo);
+    // Before the trip with every day open, Tokyo opens on its first day with a gap.
+    expect(selectedTab(again).text()).toContain("1 Oct");
+  });
+});
+
+describe("the trip's today", () => {
+  test("follows the trip's timezone when it changes", async () => {
+    // 24 Sep, 02:00 UTC: 24 Sep in Taipei, still 23 Sep in Los Angeles.
+    const wrapper = await mountGrid(everyday);
+    expect(tabTexts(wrapper)).toEqual(["Today 24 Sep 3 gaps"]);
+
+    // The same grid, not a remount: TripsHome keys the grid on the trip id only.
+    // (Cast because the linter sees .vue files through a props-less shim.)
+    const edited: Trip = { ...everyday, timezone: "America/Los_Angeles" };
+    await wrapper.setProps({ trip: edited } as Record<string, unknown>);
+
+    expect(tabTexts(wrapper)).toEqual(["Today 23 Sep 3 gaps"]);
+    expect(selectedTab(wrapper).text()).toContain("23 Sep");
+  });
 });
 
 describe("adding meals", () => {
@@ -318,6 +357,29 @@ describe("adding meals", () => {
 
     expect(wrapper.text()).toContain("Lunch is open for proposals.");
     expect(wrapper.text()).not.toContain("Start planning lunch");
+  });
+
+  test("when someone else's lunch cannot be fetched yet, says it exists rather than that adding failed", async () => {
+    const backend = createFakeMealsApi();
+    let listFails = false;
+    const api: FakeMealsApi = {
+      ...backend,
+      async listMeals(tripId) {
+        if (listFails) throw new Error("network down");
+        return backend.listMeals(tripId);
+      },
+    };
+    const wrapper = await mountGrid(tokyo, api);
+    await slotButton(wrapper, "Lunch").trigger("click");
+
+    backend.seed(aMeal({ tripId: "tokyo", date: "2026-10-01", slot: "lunch", proposals: 2 }));
+    listFails = true;
+    await buttonByText(wrapper, "Start planning lunch").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Someone else added lunch first");
+    expect(wrapper.text()).toContain("Couldn't refresh the meals to show it: network down");
+    expect(wrapper.text()).not.toContain("Couldn't add the meal");
   });
 
   test("a second lunch is refused, and the one someone else added first is shown", async () => {
@@ -435,7 +497,7 @@ describe("an undated trip", () => {
   });
 
   test("a day in the link opens even when it has no meals yet", async () => {
-    history.replaceState(null, "", "/?day=2026-10-10");
+    history.replaceState(null, "", "/?trip=home&day=2026-10-10");
     const wrapper = await mountGrid(everyday);
 
     expect(selectedTab(wrapper).text()).toContain("10 Oct");

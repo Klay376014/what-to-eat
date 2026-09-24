@@ -101,9 +101,17 @@ Why C, over the other two:
   - Why: during the trip, today is what people act on. Before it, planning is
     the job, so the app opens where planning is needed. After it, the record
     reads from the start.
-  - Always, before any of these: a day in the URL (`?day=2026-10-16`) wins, so
-    a shared link or a later digest email can open a specific day. Going back
-    to the grid returns to the day you left.
+  - Always, before any of these: a day in the URL wins, so a shared link or a
+    later digest email can open a specific day. Going back to the grid returns
+    to the day you left.
+  - The day is scoped to its trip: `?trip=<trip id>&day=2026-10-16`. A trip's
+    grid honours `day` only when `trip` names that trip, so a day chosen in
+    one trip never follows you into another, whether you switch trips or a
+    reload opens on a different one. (Added in #7 review: a bare `?day=` leaked
+    across trips.)
+  - Opening the trip that `?trip=` names, so a digest link lands on the right
+    trip as well as the right day, is left to a later change to the trip
+    selection. Until then the day applies when the app opens on that trip.
 
 ## Consequences
 

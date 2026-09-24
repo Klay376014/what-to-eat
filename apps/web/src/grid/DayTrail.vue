@@ -22,6 +22,8 @@ import type { TrailEntry } from "./tripDays.ts";
 export type AddMeal = (meal: { slot: FixedSlot } | { slot: "other"; label: string }) => Promise<{
   /** False when someone else had added that breakfast, lunch or dinner first. */
   added: boolean;
+  /** Why their meal could not be fetched to show it, when it could not. */
+  refreshFailure: string | null;
 }>;
 
 const props = defineProps<{ date: IsoDate; trail: readonly TrailEntry[]; add: AddMeal }>();
@@ -72,8 +74,12 @@ async function startPlanning(entry: TrailEntry) {
   notice.value = null;
   await run(
     async () => {
-      const { added } = await props.add({ slot });
-      if (!added) notice.value = `Someone else added ${entry.name.toLowerCase()} first.`;
+      const { added, refreshFailure } = await props.add({ slot });
+      if (added) return;
+      notice.value = `Someone else added ${entry.name.toLowerCase()} first.`;
+      if (refreshFailure) {
+        notice.value += ` Couldn't refresh the meals to show it: ${refreshFailure}`;
+      }
     },
     (message) => (failure.value = message),
   );

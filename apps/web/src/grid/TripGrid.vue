@@ -29,16 +29,20 @@ const meals = ref<Meal[]>([]);
 const loading = ref(true);
 const failure = ref<string | null>(null);
 
-/** Today on the trip's own calendar, never the browser's. */
-const today = dateIn(props.trip.timezone, new Date());
-const requested = readDayParam();
+/**
+ * Today on the trip's own calendar, never the browser's. Follows the trip's
+ * timezone, which the organiser can change without this grid remounting.
+ */
+const today = computed(() => dateIn(props.trip.timezone, new Date()));
+// The grid is keyed on the trip, so the trip id is fixed for its lifetime.
+const requested = readDayParam(props.trip.id);
 const selected = ref<IsoDate | null>(null);
 /** Days of an undated trip someone went to, before any meal is on them. */
 const visited = ref<IsoDate[]>(requested ? [requested] : []);
 
 const undated = computed(() => props.trip.startDate === null || props.trip.endDate === null);
 const tabs = computed(() =>
-  dayTabs(tripDates(props.trip, meals.value, today, visited.value), meals.value, today),
+  dayTabs(tripDates(props.trip, meals.value, today.value, visited.value), meals.value, today.value),
 );
 /**
  * The day shown. Chosen once when the meals arrive; if the trip's dates later
@@ -48,7 +52,7 @@ const tabs = computed(() =>
 const activeDay = computed(() => {
   const day = selected.value;
   if (day !== null && tabs.value.some((t) => t.date === day)) return day;
-  return defaultDay(props.trip, tabs.value, today, requested);
+  return defaultDay(props.trip, tabs.value, today.value, requested);
 });
 const trail = computed(() => dayTrail(activeDay.value, meals.value));
 
@@ -57,7 +61,7 @@ async function load() {
   failure.value = null;
   try {
     meals.value = await api.listMeals(props.trip.id);
-    selected.value ??= defaultDay(props.trip, tabs.value, today, requested);
+    selected.value ??= defaultDay(props.trip, tabs.value, today.value, requested);
   } catch (error) {
     failure.value = `Couldn't load the meals: ${errorMessage(error)}`;
   } finally {
@@ -69,7 +73,7 @@ onMounted(load);
 
 function select(day: IsoDate) {
   selected.value = day;
-  writeDayParam(day);
+  writeDayParam(props.trip.id, day);
 }
 
 function goTo(day: string) {
@@ -86,12 +90,18 @@ const add: AddMeal = async (meal) => {
   try {
     const created = await api.addMeal(input);
     meals.value = [...meals.value, created];
-    return { added: true };
+    return { added: true, refreshFailure: null };
   } catch (error) {
     // Someone else added this breakfast, lunch or dinner first: show theirs.
+    // Their meal exists whether or not the refresh works, so a failed
+    // refresh is reported as that, never as this add failing.
     if (!(error instanceof SlotTakenError)) throw error;
-    meals.value = await api.listMeals(props.trip.id);
-    return { added: false };
+    try {
+      meals.value = await api.listMeals(props.trip.id);
+      return { added: false, refreshFailure: null };
+    } catch (refreshError) {
+      return { added: false, refreshFailure: errorMessage(refreshError) };
+    }
   }
 };
 </script>

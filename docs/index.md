@@ -4,5 +4,6 @@ A small app for friends on a trip: propose restaurants for each meal, vote on th
 
 It is a personal, non-commercial project in early development.
 
+- [Open the app](app/)
 - [Privacy Policy](privacy.html)
 - [Source code](https://github.com/Klay376014/what-to-eat)

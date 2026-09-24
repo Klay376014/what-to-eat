@@ -6,10 +6,7 @@
   "scripts": {
     "ready": "vp check && vp run -r test && vp run -r build",
     "dev": "vp run web#dev",
-    "prepare": "vp config",
-    "db:push": "supabase db push",
-    "db:types": "supabase gen types typescript --linked --schema public > apps/web/src/types/database.ts",
-    "auth:check-scopes": "node --experimental-strip-types --env-file-if-exists=apps/web/.env scripts/check-google-scopes.ts"
+    "prepare": "vp config"
   },
   "devDependencies": {
     "vite": "catalog:",

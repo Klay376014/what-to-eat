@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { errorMessage } from "../lib/errors.ts";
+import BaseButton from "../ui/BaseButton.vue";
+import BaseIcon from "../ui/BaseIcon.vue";
+import ConfirmDialog from "../ui/ConfirmDialog.vue";
 import { contentOutsideRange, type DatedContent, type Trip, type TripSettings } from "./trip.ts";
 import TripFields from "./TripFields.vue";
 import { validateTripSettings, type TripSettingsErrors } from "./tripSettings.ts";
@@ -63,6 +66,11 @@ async function saveAnyway() {
   }, "Couldn't save the trip");
 }
 
+function openDelete() {
+  failure.value = null;
+  confirmingDelete.value = true;
+}
+
 async function deleteTrip() {
   await run(async () => {
     await api.deleteTrip(props.trip.id);
@@ -72,13 +80,16 @@ async function deleteTrip() {
 </script>
 
 <template>
-  <section
-    v-if="stranded"
-    role="alertdialog"
-    aria-labelledby="stranded-title"
-    class="card warning stack"
+  <!-- A warning, not a block: the organiser decides (PRD stories 8 and 9). -->
+  <ConfirmDialog
+    :open="stranded !== null"
+    title="Some meals would fall outside the new dates"
+    confirm-label="Change dates anyway"
+    cancel-label="Keep editing"
+    :busy="busy"
+    @confirm="saveAnyway"
+    @cancel="stranded = null"
   >
-    <h3 id="stranded-title">Some meals would fall outside the new dates</h3>
     <p>
       These stay in the trip, but they will no longer be on any of its days. Check them before you
       go ahead.
@@ -87,45 +98,43 @@ async function deleteTrip() {
       <li v-for="item in stranded" :key="item.id">{{ item.label }}</li>
     </ul>
     <p v-if="failure" role="alert" class="error">{{ failure }}</p>
-    <div class="actions">
-      <button type="button" class="primary" :disabled="busy" @click="saveAnyway">
-        Change dates anyway
-      </button>
-      <button type="button" :disabled="busy" @click="stranded = null">Keep editing</button>
-    </div>
-  </section>
+  </ConfirmDialog>
 
-  <section
-    v-else-if="confirmingDelete"
-    role="alertdialog"
-    aria-labelledby="delete-title"
-    class="card warning stack"
+  <ConfirmDialog
+    :open="confirmingDelete"
+    :title="`Delete “${trip.name}”?`"
+    confirm-label="Delete for everyone"
+    cancel-label="Keep the trip"
+    destructive
+    :busy="busy"
+    @confirm="deleteTrip"
+    @cancel="confirmingDelete = false"
   >
-    <h3 id="delete-title">Delete “{{ trip.name }}”?</h3>
     <p>This removes the trip for every member, and cannot be undone.</p>
     <p v-if="failure" role="alert" class="error">{{ failure }}</p>
-    <div class="actions">
-      <button type="button" class="destructive" :disabled="busy" @click="deleteTrip">
-        Delete for everyone
-      </button>
-      <button type="button" :disabled="busy" @click="confirmingDelete = false">
-        Keep the trip
-      </button>
-    </div>
-  </section>
+  </ConfirmDialog>
 
-  <form v-else class="stack" novalidate @submit.prevent="submit">
+  <form class="stack" novalidate @submit.prevent="submit">
     <h3>Edit trip</h3>
     <TripFields :model-value="settings" :errors="errors" />
-    <p v-if="failure" role="alert" class="error">{{ failure }}</p>
+    <p v-if="failure && !stranded && !confirmingDelete" role="alert" class="error">
+      {{ failure }}
+    </p>
     <div class="actions">
-      <button type="submit" class="primary" :disabled="busy">Save</button>
-      <button type="button" :disabled="busy" @click="emit('cancel')">Cancel</button>
+      <BaseButton type="submit" variant="primary" :disabled="busy">Save</BaseButton>
+      <BaseButton :disabled="busy" @click="emit('cancel')">Cancel</BaseButton>
     </div>
     <div class="danger-zone">
-      <button type="button" class="destructive" :disabled="busy" @click="confirmingDelete = true">
-        Delete trip
-      </button>
+      <BaseButton variant="destructive" :disabled="busy" @click="openDelete">
+        <BaseIcon name="trash" /> Delete trip
+      </BaseButton>
     </div>
   </form>
 </template>
+
+<style scoped>
+.danger-zone {
+  border-top: var(--border-width) solid var(--border);
+  padding-top: var(--space-4);
+}
+</style>

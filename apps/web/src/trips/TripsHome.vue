@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, useId } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { errorMessage } from "../lib/errors.ts";
+import BaseButton from "../ui/BaseButton.vue";
+import BaseCard from "../ui/BaseCard.vue";
+import BaseIcon from "../ui/BaseIcon.vue";
+import EmptyState from "../ui/EmptyState.vue";
+import SelectField from "../ui/SelectField.vue";
 import CreateTripForm from "./CreateTripForm.vue";
 import EditTripForm from "./EditTripForm.vue";
 import { pickDefaultTrip, type Trip } from "./trip.ts";
 import { useTripsApi } from "./tripsApi.ts";
 
 const api = useTripsApi();
-const id = useId();
 
 const trips = ref<Trip[]>([]);
 const selectedId = ref<string | null>(null);
@@ -57,12 +61,12 @@ function formatDate(date: string): string {
 </script>
 
 <template>
-  <p v-if="loading" class="muted">Loading your trips…</p>
+  <BaseCard v-if="loading"><p class="muted">Loading your trips…</p></BaseCard>
 
-  <div v-else-if="failure" class="stack">
+  <BaseCard v-else-if="failure">
     <p role="alert" class="error">{{ failure }}</p>
-    <button type="button" @click="load">Try again</button>
-  </div>
+    <div><BaseButton @click="load">Try again</BaseButton></div>
+  </BaseCard>
 
   <CreateTripForm
     v-else-if="mode === 'create'"
@@ -71,29 +75,32 @@ function formatDate(date: string): string {
     @cancel="mode = 'view'"
   />
 
-  <section v-else-if="trips.length === 0" class="empty-state stack">
-    <h2>No trips yet</h2>
-    <p>
-      Create a trip to start deciding where to eat. You'll be its organiser, and can invite the
-      people coming along.
-    </p>
-    <div>
-      <button type="button" class="primary" @click="mode = 'create'">Create a trip</button>
-    </div>
-  </section>
+  <EmptyState v-else-if="trips.length === 0" title="No trips yet">
+    Create a trip to start deciding where to eat. You'll be its organiser, and can invite the people
+    coming along.
+    <template #action>
+      <BaseButton variant="primary" @click="mode = 'create'">
+        <BaseIcon name="plus" /> Create a trip
+      </BaseButton>
+    </template>
+  </EmptyState>
 
   <div v-else class="stack">
-    <div class="trip-bar">
-      <div class="field">
-        <label :for="`${id}-trip`">Trip</label>
-        <select :id="`${id}-trip`" v-model="selectedId" :disabled="mode === 'edit'">
-          <option v-for="trip in trips" :key="trip.id" :value="trip.id">{{ trip.name }}</option>
-        </select>
-      </div>
-      <button type="button" :disabled="mode === 'edit'" @click="mode = 'create'">New trip</button>
-    </div>
+    <BaseCard class="trip-bar">
+      <SelectField
+        v-model="selectedId"
+        label="Trip"
+        class="trip-choice"
+        :disabled="mode === 'edit'"
+      >
+        <option v-for="trip in trips" :key="trip.id" :value="trip.id">{{ trip.name }}</option>
+      </SelectField>
+      <BaseButton :disabled="mode === 'edit'" @click="mode = 'create'">
+        <BaseIcon name="plus" /> New trip
+      </BaseButton>
+    </BaseCard>
 
-    <article v-if="selected" class="card stack">
+    <BaseCard v-if="selected" as="article">
       <h2>{{ selected.name }}</h2>
       <dl class="facts">
         <dt>Dates</dt>
@@ -117,8 +124,31 @@ function formatDate(date: string): string {
         @cancel="mode = 'view'"
       />
       <div v-else-if="selected.myRole === 'organiser'">
-        <button type="button" @click="mode = 'edit'">Edit trip</button>
+        <BaseButton @click="mode = 'edit'"><BaseIcon name="pencil-simple" /> Edit trip</BaseButton>
       </div>
-    </article>
+    </BaseCard>
   </div>
 </template>
+
+<style scoped>
+.trip-bar {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.trip-choice {
+  flex: 1;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+}
+
+.facts dt {
+  color: var(--muted);
+  font-weight: var(--label-weight);
+}
+</style>

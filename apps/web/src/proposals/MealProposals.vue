@@ -145,7 +145,8 @@ async function cancelProposing() {
 const LINK_HINT = "Share the place from Google Maps and paste the link.";
 /**
  * Each link looked up while the form is open, by the link as pasted
- * (trimmed): asked once, and the answer, or null, kept for proposing.
+ * (trimmed): a lookup under way is shared, and a place found is kept for
+ * proposing.
  */
 let lookUps = new Map<string, Promise<string | null>>();
 /** The links still waiting for an answer. */
@@ -171,10 +172,15 @@ function placeNameFor(pasted: string): Promise<string | null> {
       .then((place) => place?.placeName ?? null)
       // The same as a link that could not be resolved.
       .catch(() => null)
-      .finally(() => {
+      .then((placeName) => {
         const rest = new Set(waiting.value);
         rest.delete(pasted);
         waiting.value = rest;
+        // Nothing found may be no answer this time (a timeout, Google
+        // busy), which the Edge Function does not keep: pasting again asks
+        // again. A place is kept, for proposing.
+        if (placeName === null) lookUps.delete(pasted);
+        return placeName;
       });
     lookUps.set(pasted, found);
   }

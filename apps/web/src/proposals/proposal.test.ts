@@ -72,21 +72,50 @@ describe("validateNote", () => {
 });
 
 describe("mapsUrl", () => {
-  test("links out through the official Maps URLs scheme, searching for the name", () => {
-    expect(mapsUrl({ placeName: "Afuri Ramen Ebisu", lat: null, lng: null })).toBe(
+  const typed = { sourceUrl: null, lat: null, lng: null };
+
+  test("a proposal with a Maps link opens that link, which lands on the place's own page", () => {
+    expect(
+      mapsUrl({
+        placeName: "Ichiran Shibuya",
+        sourceUrl: "https://maps.app.goo.gl/2avW6UjkkDbgHUwPA",
+        lat: 25.0140156,
+        lng: 121.542539,
+      }),
+    ).toBe("https://maps.app.goo.gl/2avW6UjkkDbgHUwPA");
+    expect(
+      mapsUrl({
+        placeName: "Tsuta",
+        sourceUrl: "https://www.google.co.jp/maps/place/Tsuta/@35.7,139.7,17z",
+        lat: null,
+        lng: null,
+      }),
+    ).toBe("https://www.google.co.jp/maps/place/Tsuta/@35.7,139.7,17z");
+  });
+
+  test("a link that is not http(s) is never linked to", () => {
+    for (const sourceUrl of ["javascript:alert(1)", "data:text/html,hi", "not a link"]) {
+      expect(mapsUrl({ ...typed, placeName: "Afuri", sourceUrl }), sourceUrl).toBe(
+        "https://www.google.com/maps/search/?api=1&query=Afuri",
+      );
+    }
+  });
+
+  test("without a link, searches for the name through the official Maps URLs scheme", () => {
+    expect(mapsUrl({ ...typed, placeName: "Afuri Ramen Ebisu" })).toBe(
       "https://www.google.com/maps/search/?api=1&query=Afuri%20Ramen%20Ebisu",
     );
   });
 
   test("encodes a name that would otherwise break the address", () => {
-    const url = new URL(mapsUrl({ placeName: "Tsuta & Co #2 / 蔦", lat: null, lng: null }));
+    const url = new URL(mapsUrl({ ...typed, placeName: "Tsuta & Co #2 / 蔦" }));
     expect(url.origin + url.pathname).toBe("https://www.google.com/maps/search/");
     expect(url.searchParams.get("api")).toBe("1");
     expect(url.searchParams.get("query")).toBe("Tsuta & Co #2 / 蔦");
   });
 
-  test("prefers the place's coordinates when it has them, so it lands on that branch", () => {
-    expect(mapsUrl({ placeName: "Afuri", lat: 35.6467, lng: 139.7101 })).toBe(
+  test("without a link but with coordinates, searches for those, so it lands on that branch", () => {
+    expect(mapsUrl({ placeName: "Afuri", sourceUrl: null, lat: 35.6467, lng: 139.7101 })).toBe(
       "https://www.google.com/maps/search/?api=1&query=35.6467%2C139.7101",
     );
   });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { parsePlaceUrl, redirectLocation, redirectRequest, shortLink } from "./mapsLink.ts";
+import { parsePlaceUrl, readReply, redirectRequest, shortLink } from "./mapsLink.ts";
 
 /*
  * Redirect targets captured from real maps.app.goo.gl links (September 2026),
@@ -158,7 +158,7 @@ describe("redirectRequest", () => {
   });
 });
 
-describe("redirectLocation", () => {
+describe("readReply", () => {
   // The head of a real reply to a request with no User-Agent (trimmed).
   const FOUND = [
     "HTTP/1.1 302 Found",
@@ -171,28 +171,37 @@ describe("redirectLocation", () => {
   ].join("\r\n");
 
   test("a redirect gives where it points", () => {
-    expect(redirectLocation(FOUND)).toBe(`${JACK_BASKIN}&g_st=ic`);
+    expect(readReply(FOUND)).toEqual({ location: `${JACK_BASKIN}&g_st=ic` });
   });
 
   test("the header name is read in any case", () => {
-    expect(redirectLocation("HTTP/1.1 301 Moved\r\nlocation: https://example.com/x\r\n\r\n")).toBe(
-      "https://example.com/x",
-    );
+    expect(readReply("HTTP/1.1 301 Moved\r\nlocation: https://example.com/x\r\n\r\n")).toEqual({
+      location: "https://example.com/x",
+    });
   });
 
-  test("anything but a redirect with somewhere to go gives nothing", () => {
+  test("a link Google says does not exist is an answer: it has no place, for good", () => {
+    // What maps.app.goo.gl/doesNotExist12345 answers.
+    expect(readReply("HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n")).toBe("no place");
+    expect(readReply("HTTP/1.1 410 Gone\r\n\r\n")).toBe("no place");
+  });
+
+  test("anything else is no answer yet, and may be asked again another time", () => {
     for (const head of [
       // What a browser User-Agent is served: a page, no Location.
       "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n",
       "HTTP/1.1 200 OK\r\nLocation: https://example.com/x\r\n\r\n",
-      "HTTP/1.1 404 Not Found\r\n\r\n",
+      "HTTP/1.1 429 Too Many Requests\r\n\r\n",
+      "HTTP/1.1 500 Internal Server Error\r\n\r\n",
+      "HTTP/1.1 503 Service Unavailable\r\n\r\n",
       "HTTP/1.1 302 Found\r\nContent-Length: 0\r\n\r\n",
       "HTTP/1.1 302 Found\r\nLocation: \r\n\r\n",
       "HTTP/1.1 302 Found\r\nLocation: /relative\r\n\r\n",
+      // Cut off, or never answered at all.
       "",
       "garbage",
     ]) {
-      expect(redirectLocation(head), head).toBeNull();
+      expect(readReply(head), head).toBe("unavailable");
     }
   });
 });

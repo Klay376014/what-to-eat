@@ -418,6 +418,7 @@ export type Database = {
           place_name: string | null;
           revision: number;
           slot: Database["public"]["Enums"]["meal_slot"];
+          source_url: string | null;
           start_time: string | null;
         }[];
       };

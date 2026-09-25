@@ -4,18 +4,21 @@
 // CID and coordinates) or { place: null } when the link could not be
 // resolved. See docs/adr/0007-maps-link-resolution.md.
 //
-// - Each link is resolved once. What it resolved to, or that it could not
-//   be, is kept in public.maps_links for good, and a proposal made with the
-//   link takes its CID and coordinates from there.
+// - Each link is resolved once. What it resolved to, or Google's answer that
+//   it has no place (a redirect to something that is not a place, or a
+//   404), is kept in public.maps_links for good, and a proposal made with
+//   the link takes its CID and coordinates from there.
 // - Only https://maps.app.goo.gl/<id> is ever asked (shortLink), so the
 //   function cannot be pointed anywhere else.
 // - The request carries no User-Agent and nothing follows the redirect: a
 //   browser User-Agent is served a JavaScript page with no Location, and
 //   fetch() always sends one of its own, so the request is written by hand
 //   over TLS (redirectRequest) and only the reply's head is read.
-// - Anything that goes wrong (a timeout, a reply that is not a redirect, an
-//   address that is not a place) is the same answer: no place. The app then
-//   leaves the name to the member. Nothing is retried.
+// - No answer (a timeout, a failed connection, a 429 or 5xx, anything but a
+//   redirect or a 404) is not kept: a later paste of the link asks again.
+//   Nothing is retried within a request.
+// - Either way the app is told only "no place", and leaves the name to the
+//   member.
 //
 // verify_jwt is off (supabase/config.toml), as for the calendar function:
 // the platform's check only understands the legacy JWT keys, so the caller
@@ -96,8 +99,10 @@ async function resolve(sourceUrl: string, link: URL): Promise<ResolvedPlace | nu
   if (cacheError) throw cacheError;
   if (cached) return placeOf(cached);
 
-  const location = await askWhereItPoints(link);
-  const place = location === null ? null : parsePlaceUrl(location);
+  const reply = await askWhereItPoints(link);
+  // No answer this time: nothing is kept, so the link can be asked again.
+  if (reply === "unavailable") return null;
+  const place = reply === "no place" ? null : parsePlaceUrl(reply.location);
 
   const { error } = await admin.from("maps_links").insert({
     source_url: sourceUrl,

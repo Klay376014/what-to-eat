@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(27);
+select plan(28);
 
 select has_table('public', 'maps_links', 'maps_links exists');
 select col_is_pk('public', 'maps_links', 'source_url', 'one resolution per short link');
@@ -43,7 +43,7 @@ select lives_ok(
 select lives_ok(
   $$ insert into public.maps_links (source_url)
      values ('https://maps.app.goo.gl/27Jewne9cvYxC4SW8') $$,
-  'service_role keeps a link that could not be resolved, so it is not asked again'
+  'service_role keeps a link Google answered for without a place, so it is not asked again'
 );
 select results_eq(
   $$ select place_name, place_cid, lat, lng from public.maps_links
@@ -221,6 +221,27 @@ select results_eq(
      returning place_cid, lat, lng $$,
   $$ values ('42'::text, 1::double precision, 2::double precision) $$,
   'a place given by service_role is not overwritten from the cache'
+);
+
+-- The decided restaurant's calendar event links to the pasted link ------------------
+
+reset role;
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}';
+
+insert into public.decisions (meal_id, proposal_id)
+select meal_id, id from public.proposals where place_name = 'NTUST cafeteria';
+
+reset role;
+set local role service_role;
+set local request.jwt.claims to '{"role": "service_role"}';
+
+select results_eq(
+  $$ select place_name, source_url, lat, lng
+     from public.claim_calendar_events('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') $$,
+  $$ values ('NTUST cafeteria'::text, 'https://maps.app.goo.gl/2avW6UjkkDbgHUwPA'::text,
+             25.0140156::double precision, 121.542539::double precision) $$,
+  'claiming a decided meal for its calendar event hands over the pasted link too'
 );
 
 select * from finish();

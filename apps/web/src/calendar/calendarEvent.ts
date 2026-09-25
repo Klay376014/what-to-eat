@@ -9,7 +9,7 @@ import { mealTimes, zonedIso, type TimedMeal } from "./mealTime.ts";
 
 export interface EventMeal extends TimedMeal, Pick<Meal, "id" | "label"> {}
 
-export type EventPlace = Pick<Proposal, "placeName" | "note" | "lat" | "lng">;
+export type EventPlace = Pick<Proposal, "placeName" | "note" | "sourceUrl" | "lat" | "lng">;
 
 /** The parts of a Calendar API event resource the app writes. */
 export interface CalendarEvent {

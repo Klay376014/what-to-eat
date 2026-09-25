@@ -12,6 +12,7 @@ const dinner = {
 const ichiran = {
   placeName: "Ichiran Shibuya",
   note: "No reservations; the queue moves fast.",
+  sourceUrl: "https://maps.app.goo.gl/2avW6UjkkDbgHUwPA",
   lat: 35.6605,
   lng: 139.7005,
 };
@@ -32,9 +33,9 @@ describe("a decided meal's calendar event", () => {
     expect(event.summary).toBe("Afternoon tea · Ichiran Shibuya (15:30 Tokyo)");
   });
 
-  it("carries the time on the trip's clock, the proposer's note and the Maps link", () => {
+  it("carries the time on the trip's clock, the proposer's note and the pasted Maps link", () => {
     const event = calendarEvent({ trip, meal: dinner, proposal: ichiran, attendees: [] });
-    const mapsLink = "https://www.google.com/maps/search/?api=1&query=35.6605%2C139.7005";
+    const mapsLink = "https://maps.app.goo.gl/2avW6UjkkDbgHUwPA";
     expect(event.description).toBe(
       [
         "Dinner at 19:00 Tokyo time, Sat 3 Oct.",
@@ -47,11 +48,11 @@ describe("a decided meal's calendar event", () => {
     expect(event.location).toBe(mapsLink);
   });
 
-  it("leaves the note out when there is none", () => {
+  it("leaves the note out when there is none, and searches Maps for a name typed with no link", () => {
     const event = calendarEvent({
       trip,
       meal: dinner,
-      proposal: { placeName: "Afuri", note: null, lat: null, lng: null },
+      proposal: { placeName: "Afuri", note: null, sourceUrl: null, lat: null, lng: null },
       attendees: [],
     });
     expect(event.description).toBe(

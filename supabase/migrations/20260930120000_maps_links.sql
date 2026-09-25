@@ -3,9 +3,12 @@
 -- The maps-link Edge Function asks maps.app.goo.gl where a pasted short link
 -- points and reads the place (name, CID, coordinates) from the address. What
 -- it learns is kept here, for good, keyed by the link exactly as pasted: the
--- same link is never resolved twice. A link that could not be resolved (not
--- a place, a timeout, anything but a redirect) is kept too, with no place, so
--- it is not asked again either.
+-- same link is never resolved twice. A link Google answered for without a
+-- place (a redirect to a search or directions, an address missing its place,
+-- coordinates or feature id, or a 404) is kept too, with no place, so it is
+-- not asked again either. No answer at all (a timeout, a failed connection,
+-- a 429 or 5xx) is not kept: the Edge Function simply writes nothing, and a
+-- later paste of the link asks again.
 --
 -- A proposal made with a link takes its CID and coordinates from here, in a
 -- trigger, rather than from the client. The client only ever sends the name,
@@ -75,3 +78,60 @@ create trigger proposals_fill_place
   for each row execute function private.fill_proposal_place();
 
 revoke all on function private.fill_proposal_place() from public, anon, authenticated, service_role;
+
+-- The calendar event links to the pasted link -----------------------------------------
+-- A decided restaurant's event carries its Maps link (#12). With #9 that is
+-- the link the proposer pasted, which opens the place's own page, rather
+-- than a search the official Maps URLs scheme can make only from a name or a
+-- pin (docs/adr/0007-maps-link-resolution.md). So the claim hands the link
+-- over too. The link never changes after a proposal is made (no update
+-- grant), so nothing new needs to queue a meal.
+--
+-- Its result gains a column, which `create or replace` cannot do: dropped
+-- and made again, with the grants of 20260929090000_calendar.sql.
+drop function public.claim_calendar_events(uuid);
+
+create function public.claim_calendar_events(trip_id uuid)
+returns table (
+  meal_id uuid,
+  revision bigint,
+  event_id text,
+  date date,
+  slot public.meal_slot,
+  label text,
+  start_time time,
+  place_name text,
+  note text,
+  lat double precision,
+  lng double precision,
+  source_url text
+)
+language sql
+volatile
+security definer
+set search_path = ''
+as $$
+  with claimed as (
+    update public.calendar_events e
+    set claimed_until = now() + interval '5 minutes'
+    where e.meal_id in (
+      select q.meal_id
+      from public.calendar_events q
+      where q.trip_id = claim_calendar_events.trip_id
+        and q.status <> 'synced'
+        and (q.claimed_until is null or q.claimed_until < now())
+      for update skip locked
+    )
+    returning e.meal_id, e.revision, e.event_id
+  )
+  select c.meal_id, c.revision, c.event_id, m.date, m.slot, m.label, m.start_time,
+    p.place_name, p.note, p.lat, p.lng, p.source_url
+  from claimed c
+  join public.meals m on m.id = c.meal_id
+  left join public.decisions d on d.meal_id = c.meal_id
+  left join public.proposals p on p.id = d.proposal_id
+  order by m.date, m.position
+$$;
+
+revoke all on function public.claim_calendar_events(uuid) from public, anon, authenticated;
+grant execute on function public.claim_calendar_events(uuid) to service_role;

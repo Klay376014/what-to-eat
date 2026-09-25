@@ -123,7 +123,13 @@ export async function syncTrip(
               label: row.label,
               startTime: row.start_time,
             },
-            proposal: { placeName: row.place_name, note: row.note, lat: row.lat, lng: row.lng },
+            proposal: {
+              placeName: row.place_name,
+              note: row.note,
+              sourceUrl: row.source_url,
+              lat: row.lat,
+              lng: row.lng,
+            },
             attendees,
           });
           const eventId = await calendar.putEvent(calendarId, event);

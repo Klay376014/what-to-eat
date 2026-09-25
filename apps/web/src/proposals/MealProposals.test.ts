@@ -103,7 +103,7 @@ describe("proposing a restaurant", () => {
     expect(counts(wrapper)).toEqual([1, 2]);
   });
 
-  test("a Maps link and a note go with it, and the link opens Google Maps through the official scheme", async () => {
+  test("a Maps link and a note go with it, and the proposal opens that link", async () => {
     const api = createFakeProposalsApi();
     const wrapper = await mountProposals(api);
 
@@ -119,9 +119,7 @@ describe("proposing a restaurant", () => {
     );
     const link = proposal.get("a");
     expect(link.text().replace(/\s+/g, " ")).toBe("Open in Google Maps: Afuri Ramen Ebisu");
-    expect(link.attributes("href")).toBe(
-      "https://www.google.com/maps/search/?api=1&query=Afuri%20Ramen%20Ebisu",
-    );
+    expect(link.attributes("href")).toBe("https://maps.app.goo.gl/AbCdEf123?g_st=ic");
     expect(link.attributes("target")).toBe("_blank");
     expect(link.attributes("rel")).toBe("noopener noreferrer");
     // The link is kept as pasted (trimmed), for #9 to resolve.
@@ -220,7 +218,7 @@ describe("pasting a Maps short link (#9)", () => {
     await flushPromises();
   }
 
-  test("fills in the restaurant's name, and the proposal opens Maps at the place", async () => {
+  test("fills in the restaurant's name, and the proposal keeps the place and opens the link", async () => {
     const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
     const wrapper = await mountProposals(api);
     await openForm(wrapper);
@@ -232,9 +230,8 @@ describe("pasting a Maps short link (#9)", () => {
     await submit(wrapper);
 
     expect(listed(wrapper)[0]).toContain("Ichiran Shibuya");
-    expect(item(wrapper, "Ichiran Shibuya").get("a").attributes("href")).toBe(
-      "https://www.google.com/maps/search/?api=1&query=35.661%2C139.701",
-    );
+    expect(item(wrapper, "Ichiran Shibuya").get("a").attributes("href")).toBe(ICHIRAN_LINK);
+    expect(await api.listProposals(MEAL)).toMatchObject([{ lat: 35.661, lng: 139.701 }]);
   });
 
   test("the filled-in name can still be changed before proposing", async () => {
@@ -299,9 +296,10 @@ describe("pasting a Maps short link (#9)", () => {
     await submit(wrapper);
 
     expect(listed(wrapper)[0]).toContain("Afuri Ramen Ebisu");
-    // With no place, Maps is searched for the name.
+    // No place, but the link still opens what was pasted.
+    expect(await api.listProposals(MEAL)).toMatchObject([{ lat: null, lng: null }]);
     expect(item(wrapper, "Afuri Ramen Ebisu").get("a").attributes("href")).toBe(
-      "https://www.google.com/maps/search/?api=1&query=Afuri%20Ramen%20Ebisu",
+      "https://maps.app.goo.gl/27Jewne9cvYxC4SW8",
     );
   });
 
@@ -321,6 +319,27 @@ describe("pasting a Maps short link (#9)", () => {
     await fieldByLabel(wrapper, "Restaurant name").setValue("Ichiran");
     await submit(wrapper);
     expect(listed(wrapper)[0]).toContain("Ichiran");
+  });
+
+  test("pasting the link again after a lookup that got nothing asks again", async () => {
+    const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
+    const resolve = api.resolveMapsLink.bind(api);
+    let firstTime = true;
+    api.resolveMapsLink = async (url) => {
+      if (firstTime) {
+        firstTime = false;
+        return null; // Google did not answer in time.
+      }
+      return resolve(url);
+    };
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, ICHIRAN_LINK);
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("");
+
+    await paste(wrapper, ICHIRAN_LINK);
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("Ichiran Shibuya");
   });
 
   test("an answer for a link that has since been replaced is ignored", async () => {
@@ -388,9 +407,7 @@ describe("pasting a Maps short link (#9)", () => {
     await flushPromises();
 
     expect(listed(wrapper)[0]).toContain("一蘭");
-    expect(item(wrapper, "一蘭").get("a").attributes("href")).toBe(
-      "https://www.google.com/maps/search/?api=1&query=35.661%2C139.701",
-    );
+    expect(await api.listProposals(MEAL)).toMatchObject([{ lat: 35.661, lng: 139.701 }]);
   });
 
   test("anything but a Maps short link is not looked up", async () => {
@@ -855,7 +872,7 @@ describe("deciding", () => {
       "Open in Google Maps: Afuri Clear the decision",
     ]);
     const link = wrapper.get(".decision a");
-    expect(link.attributes("href")).toBe("https://www.google.com/maps/search/?api=1&query=Afuri");
+    expect(link.attributes("href")).toBe("https://maps.app.goo.gl/AbCdEf123");
     expect(item(wrapper, "Afuri").find(".decided-mark").exists()).toBe(true);
     expect(item(wrapper, "Tsuta").find(".decided-mark").exists()).toBe(false);
     expect((await api.getDecision(MEAL))?.proposalId).toBe("afuri");

@@ -57,21 +57,33 @@ export function redirectRequest(link: URL): string {
 }
 
 /**
- * Where a reply's head redirects to, or null for anything but a redirect
- * with an absolute https Location. A 200, a 404, a missing Location: all
- * the same as a link that could not be parsed.
+ * What maps.app.goo.gl's reply says about a short link:
+ *
+ * - `{ location }`: a redirect to an absolute https address, to be parsed.
+ * - `"no place"`: Google says the link does not exist (404, 410). That is an
+ *   answer, and a lasting one, so it is kept like a link that could not be
+ *   parsed.
+ * - `"unavailable"`: anything else, from a 429 or a 5xx to a page with no
+ *   Location or a reply cut short. No answer yet: nothing is kept, and a
+ *   later paste of the same link asks again.
+ *
+ * For the member all three end the same way when there is no place: the
+ * name is left to them.
  */
-export function redirectLocation(head: string): string | null {
+export type Reply = { location: string } | "no place" | "unavailable";
+
+export function readReply(head: string): Reply {
   const [statusLine, ...headers] = head.split("\r\n");
   const status = /^HTTP\/1\.[01] (\d{3})/.exec(statusLine ?? "")?.[1];
-  if (!status || !["301", "302", "303", "307", "308"].includes(status)) return null;
+  if (status === "404" || status === "410") return "no place";
+  if (!status || !["301", "302", "303", "307", "308"].includes(status)) return "unavailable";
   for (const line of headers) {
     const colon = line.indexOf(":");
     if (colon === -1 || line.slice(0, colon).trim().toLowerCase() !== "location") continue;
     const location = line.slice(colon + 1).trim();
-    return location.startsWith("https://") ? location : null;
+    return location.startsWith("https://") ? { location } : "unavailable";
   }
-  return null;
+  return "unavailable";
 }
 
 /**

@@ -15,7 +15,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(31);
+select plan(32);
 
 insert into auth.users (id, email) values
   ('11111111-1111-1111-1111-111111111111', 'alice@example.com'),
@@ -132,6 +132,13 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"}';
 
+select results_eq(
+  $$ update public.decisions set proposal_id = 'a1000000-0000-0000-0000-000000000002'
+     where meal_id = 'a0000000-0000-0000-0000-000000000001'
+     returning decided_by $$,
+  array['22222222-2222-2222-2222-222222222222'::uuid],
+  'the organiser re-sending the same proposal changes nothing, and it stays the member''s'
+);
 select results_eq(
   $$ update public.decisions set proposal_id = 'a1000000-0000-0000-0000-000000000001'
      where meal_id = 'a0000000-0000-0000-0000-000000000001'

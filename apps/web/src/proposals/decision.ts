@@ -1,3 +1,5 @@
+import { memberLabel } from "./proposal.ts";
+
 /**
  * A meal's decision (#11): which of its proposals the group is going to.
  * Any member decides; only the member who decided, or the organiser,
@@ -33,7 +35,9 @@ export function canChangeDecision(
 export function deciderLabel(
   decision: Pick<Decision, "decidedBy" | "decidedByMe" | "deciderName">,
 ): string {
-  if (decision.decidedByMe) return "you";
-  if (decision.decidedBy === null) return "a member who deleted their account";
-  return decision.deciderName ?? "a member with no name";
+  return memberLabel({
+    isMe: decision.decidedByMe,
+    id: decision.decidedBy,
+    name: decision.deciderName,
+  });
 }

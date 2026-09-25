@@ -112,8 +112,9 @@ create trigger proposals_decided_name
 -- currently in, written out as in the earlier migrations. Changing and
 -- clearing also ask that the caller made the decision or organises the trip.
 --
--- An UPDATE's WITH CHECK runs after the BEFORE trigger has made the decision
--- the caller's, so an organiser's change passes it as their own.
+-- An UPDATE's WITH CHECK runs after the BEFORE trigger, so a changed decision
+-- is already the caller's when it is checked. It asks the same as USING, so
+-- an organiser re-sending the same proposal (nothing changes) passes too.
 --
 -- INSERT: a refused insert is 42501 whatever it carries. The WITH CHECK runs
 -- before the uniqueness and the foreign key, so a stranger cannot tell which
@@ -156,10 +157,16 @@ create policy decisions_update on public.decisions
     )
   )
   with check (
-    decided_by = (select auth.uid())
-    and meal_id in (
+    meal_id in (
       select m.id from public.meals m
       where m.trip_id in (select private.my_trip_ids())
+    )
+    and (
+      decided_by = (select auth.uid())
+      or meal_id in (
+        select m.id from public.meals m
+        where m.trip_id in (select private.my_organiser_trip_ids())
+      )
     )
   );
 

@@ -514,6 +514,24 @@ describe("voting", () => {
     expect(summary()).toBe("You've voted on every proposal.");
   });
 
+  test("a meal with no proposals has no voting summary, and a failed decision does not hide it", async () => {
+    const empty = await mountProposals();
+    expect(empty.find(".vote-summary").exists()).toBe(false);
+
+    const api = createFakeProposalsApi({
+      proposals: [aProposal({ mealId: MEAL, placeName: "Afuri" })],
+    });
+    api.decide = async () => {
+      throw new Error("network down");
+    };
+    const wrapper = await mountProposals(api);
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Couldn't decide: network down");
+    expect(wrapper.get(".vote-summary").text()).toBe("You haven't voted on 1 of 1 proposal.");
+  });
+
   test("a new proposal counts as one you have not voted on yet", async () => {
     const wrapper = await mountProposals();
 

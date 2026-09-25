@@ -402,7 +402,7 @@ async function clearDecision() {
       </section>
       <p v-if="decideFailure" role="alert" class="error">{{ decideFailure }}</p>
 
-      <p v-else class="vote-summary">{{ voteSummary }}</p>
+      <p v-if="proposals.length > 0" class="vote-summary">{{ voteSummary }}</p>
 
       <ul v-if="proposals.length > 0" class="proposals">
         <li v-for="proposal in proposals" :key="proposal.id" class="proposal stack-sm">
@@ -512,12 +512,7 @@ async function clearDecision() {
                 }}</span>
               </span>
             </a>
-            <BaseButton
-              v-if="decideLabel(proposal)"
-              variant="primary"
-              :disabled="busy"
-              @click="decideOn(proposal)"
-            >
+            <BaseButton v-if="decideLabel(proposal)" :disabled="busy" @click="decideOn(proposal)">
               {{ decideLabel(proposal)
               }}<span class="visually-hidden">{{ ` ${proposal.placeName}` }}</span>
             </BaseButton>

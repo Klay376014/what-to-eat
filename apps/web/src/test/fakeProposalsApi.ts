@@ -48,7 +48,7 @@ export function createFakeProposalsApi(
   const copy = (p: Proposal): Proposal => ({ ...p, votes: p.votes.map((v) => ({ ...v })) });
 
   /** A decision of the meal with one of its own proposals, as the foreign key insists. */
-  function decision(
+  function makeDecision(
     mealId: string,
     proposalId: string,
     decider: { id: string; name: string | null },
@@ -110,7 +110,7 @@ export function createFakeProposalsApi(
         if ([...decisions.values()].some((d) => d.proposalId === proposalId)) {
           throw new NameLockedError("decided");
         }
-        if (proposal.nameLocked) throw new NameLockedError();
+        if (proposal.nameLocked) throw new NameLockedError("voted");
       }
       if (name !== undefined) proposal.placeName = name;
       proposal.note = edit.note;
@@ -132,21 +132,21 @@ export function createFakeProposalsApi(
     },
     async decide(mealId, proposalId) {
       if (decisions.has(mealId)) throw new AlreadyDecidedError();
-      const made = decision(mealId, proposalId, me);
+      const made = makeDecision(mealId, proposalId, me);
       decisions.set(mealId, made);
       return { ...made };
     },
     async changeDecision(mealId, proposalId) {
       if (!decisions.has(mealId)) throw new Error("This meal is no longer decided.");
-      const changed = decision(mealId, proposalId, me);
+      const changed = makeDecision(mealId, proposalId, me);
       decisions.set(mealId, changed);
       return { ...changed };
     },
     async clearDecision(mealId) {
-      decisions.delete(mealId);
+      if (!decisions.delete(mealId)) throw new Error("This decision can no longer be cleared.");
     },
     decideAs(mealId, proposalId, decider) {
-      decisions.set(mealId, decision(mealId, proposalId, decider));
+      decisions.set(mealId, makeDecision(mealId, proposalId, decider));
     },
     seed(proposal) {
       proposals.push(copy(proposal));

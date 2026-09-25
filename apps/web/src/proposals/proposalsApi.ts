@@ -52,7 +52,7 @@ export interface ProposalsApi {
 export class NameLockedError extends Error {
   readonly reason: "voted" | "decided";
 
-  constructor(reason: "voted" | "decided" = "voted") {
+  constructor(reason: "voted" | "decided") {
     super(
       reason === "voted"
         ? "Someone has voted on this proposal, so its name can no longer change."

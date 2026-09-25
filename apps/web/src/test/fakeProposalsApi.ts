@@ -85,8 +85,7 @@ export function createFakeProposalsApi(
     },
     async vote(proposalId, value) {
       const proposal = find(proposalId);
-      const vote = { voterId: me.id, voterName: me.name, voterAvatarUrl: null, isMe: true, value };
-      setVote(proposal, vote, me.id);
+      setVote(proposal, aVote({ voterId: me.id, voterName: me.name, isMe: true, value }), me.id);
       return copy(proposal);
     },
     async withdrawVote(proposalId) {
@@ -98,14 +97,11 @@ export function createFakeProposalsApi(
       proposals.push(copy(proposal));
     },
     castAs(proposalId, voter, value) {
-      const vote = {
-        voterId: voter.id,
-        voterName: voter.name,
-        voterAvatarUrl: null,
-        isMe: false,
-        value,
-      };
-      setVote(find(proposalId), vote, voter.id);
+      setVote(
+        find(proposalId),
+        aVote({ voterId: voter.id, voterName: voter.name, value }),
+        voter.id,
+      );
     },
   };
 }

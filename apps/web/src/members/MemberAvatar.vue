@@ -24,6 +24,7 @@ watch(
 );
 const showPicture = computed(() => Boolean(props.avatarUrl) && !pictureFailed.value);
 const initials = computed(() => initialsOf(props.name));
+const box = computed(() => ({ width: `${props.size}px`, height: `${props.size}px` }));
 </script>
 
 <template>
@@ -35,16 +36,10 @@ const initials = computed(() => initialsOf(props.name));
     referrerpolicy="no-referrer"
     :width="size"
     :height="size"
-    :style="{ width: `${size}px`, height: `${size}px` }"
+    :style="box"
     @error="pictureFailed = true"
   />
-  <span
-    v-else
-    class="avatar initials"
-    :style="{ width: `${size}px`, height: `${size}px` }"
-    aria-hidden="true"
-    >{{ initials }}</span
-  >
+  <span v-else class="avatar initials" :style="box" aria-hidden="true">{{ initials }}</span>
 </template>
 
 <style scoped>

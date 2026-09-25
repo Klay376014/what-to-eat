@@ -433,6 +433,8 @@ describe("voting", () => {
 
     expect(tallyOf(wrapper, "Afuri")).toEqual(["1 for: you"]);
     expect(voteButton(wrapper, "Afuri", "+1").attributes("aria-pressed")).toBe("true");
+    // Withdrawing has no button of its own, so the way back is said.
+    expect(item(wrapper, "Afuri").text()).toContain("Press your vote again to take it back.");
     expect(voteButton(wrapper, "Afuri", "−1").attributes("aria-pressed")).toBe("false");
     expect(hasNotVotedOn(wrapper, "Afuri")).toBe(false);
     expect((await api.listProposals(MEAL))[0]!.votes.map((v) => v.value)).toEqual([1]);
@@ -461,6 +463,7 @@ describe("voting", () => {
     expect(tallyOf(wrapper, "Afuri")).toEqual(["No votes yet."]);
     expect(voteButton(wrapper, "Afuri", "−1").attributes("aria-pressed")).toBe("false");
     expect(hasNotVotedOn(wrapper, "Afuri")).toBe(true);
+    expect(item(wrapper, "Afuri").text()).not.toContain("Press your vote again");
     expect((await api.listProposals(MEAL))[0]!.votes).toEqual([]);
   });
 

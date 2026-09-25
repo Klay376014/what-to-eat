@@ -206,12 +206,12 @@ async function submitEdit(proposal: Proposal) {
 // Voting ----------------------------------------------------------------------
 
 const VOTE_CHOICES = [
-  { value: 1, label: "+1" },
-  { value: -1, label: "−1" },
-] as const satisfies readonly { value: VoteValue; label: string }[];
+  { value: 1, label: "+1", side: "vote--up" },
+  { value: -1, label: "−1", side: "vote--down" },
+] as const satisfies readonly { value: VoteValue; label: string; side: string }[];
 
 /** The proposal whose vote is being saved; its buttons wait meanwhile. */
-const voting = ref<string | null>(null);
+const votingProposalId = ref<string | null>(null);
 const voteFailure = ref<{ proposalId: string; message: string } | null>(null);
 
 const voteSummary = computed(() => {
@@ -231,8 +231,8 @@ function sides(proposal: Proposal): { word: string; votes: Vote[] }[] {
 }
 
 /** Votes one way, changes the vote, or withdraws it when it is already that way. */
-async function castVote(proposal: Proposal, value: VoteValue) {
-  voting.value = proposal.id;
+async function toggleVote(proposal: Proposal, value: VoteValue) {
+  votingProposalId.value = proposal.id;
   voteFailure.value = null;
   try {
     replace(
@@ -246,7 +246,7 @@ async function castVote(proposal: Proposal, value: VoteValue) {
       message: `Couldn't save your vote: ${errorMessage(error)}`,
     };
   } finally {
-    voting.value = null;
+    votingProposalId.value = null;
   }
 }
 </script>
@@ -286,15 +286,16 @@ async function castVote(proposal: Proposal, value: VoteValue) {
                 v-for="choice in VOTE_CHOICES"
                 :key="choice.value"
                 class="vote"
-                :class="choice.value === 1 ? 'vote--up' : 'vote--down'"
+                :class="choice.side"
                 :aria-pressed="String(myVote(proposal.votes) === choice.value)"
-                :disabled="voting === proposal.id"
-                @click="castVote(proposal, choice.value)"
+                :disabled="votingProposalId === proposal.id"
+                @click="toggleVote(proposal, choice.value)"
               >
                 {{ choice.label
                 }}<span class="visually-hidden">{{ ` ${proposal.placeName}` }}</span>
               </BaseButton>
               <span v-if="myVote(proposal.votes) === null" class="unvoted">You haven't voted</span>
+              <span v-else class="withdraw-hint">Press your vote again to take it back.</span>
             </div>
             <div class="tally">
               <p v-if="proposal.votes.length === 0" class="muted">No votes yet.</p>
@@ -493,6 +494,11 @@ async function castVote(proposal: Proposal, value: VoteValue) {
   background: var(--down);
   border-color: var(--down);
   color: var(--on-down);
+}
+
+.withdraw-hint {
+  font-size: var(--text-sm);
+  color: var(--muted);
 }
 
 .unvoted {

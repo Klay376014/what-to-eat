@@ -16,6 +16,11 @@
  * organiser, is offered changing or clearing it. A decided restaurant's name
  * stays, like a voted-on one.
  *
+ * Pasting a Google Maps short link into the form fills in the restaurant's
+ * name (#9). It is only ever a head start: a link that cannot be resolved
+ * leaves the name to the member, says nothing, and proposing goes on as
+ * before. A name already typed is never replaced.
+ *
  * A decided meal also says how its calendar event stands (#12): not on a
  * calendar yet, on it, or why writing it failed. Every change to the
  * decision asks the trip's calendar to follow.
@@ -48,6 +53,7 @@ import {
   type Proposal,
 } from "./proposal.ts";
 import { canChangeDecision, deciderLabel, type Decision } from "./decision.ts";
+import { shortLink } from "./mapsLink.ts";
 import { AlreadyDecidedError, NameLockedError, useProposalsApi } from "./proposalsApi.ts";
 import { myVote, tally, unvotedByMe, voterLabel, type Vote, type VoteValue } from "./vote.ts";
 
@@ -123,6 +129,7 @@ function closeProposing() {
   link.value = "";
   name.value = "";
   note.value = "";
+  forgetLookUps();
   linkError.value = nameError.value = noteError.value = undefined;
   proposeFailure.value = null;
 }
@@ -133,7 +140,86 @@ async function cancelProposing() {
   (proposeButton.value?.$el as HTMLElement | undefined)?.focus();
 }
 
+// Filling the name from a pasted Maps short link (#9) ---------------------------
+
+const LINK_HINT = "Share the place from Google Maps and paste the link.";
+/**
+ * Each link looked up while the form is open, by the link as pasted
+ * (trimmed): asked once, and the answer, or null, kept for proposing.
+ */
+let lookUps = new Map<string, Promise<string | null>>();
+/** The links still waiting for an answer. */
+const waiting = ref(new Set<string>());
+/** The name the last lookup filled in, which a later one may replace. */
+let filledName: string | null = null;
+
+const lookingUp = computed(() => waiting.value.has(link.value.trim()));
+
+function forgetLookUps() {
+  lookUps = new Map();
+  waiting.value = new Set();
+  filledName = null;
+}
+
+/** The restaurant's name for a short link, asked once per link. */
+function placeNameFor(pasted: string): Promise<string | null> {
+  let found = lookUps.get(pasted);
+  if (!found) {
+    waiting.value = new Set(waiting.value).add(pasted);
+    found = api
+      .resolveMapsLink(pasted)
+      .then((place) => place?.placeName ?? null)
+      // The same as a link that could not be resolved.
+      .catch(() => null)
+      .finally(() => {
+        const rest = new Set(waiting.value);
+        rest.delete(pasted);
+        waiting.value = rest;
+      });
+    lookUps.set(pasted, found);
+  }
+  return found;
+}
+
+/**
+ * Looks the link up, and fills in the name if the link is still the one in
+ * the field and the name is still empty (or still what an earlier lookup
+ * filled in). Nothing is said when the link cannot be resolved; the name is
+ * simply left to the member.
+ */
+async function lookUp(text: string) {
+  const pasted = text.trim();
+  if (!shortLink(pasted)) return;
+  const placeName = await placeNameFor(pasted);
+  if (placeName === null || link.value.trim() !== pasted) return;
+  if (name.value.trim() === "" || name.value === filledName) {
+    name.value = filledName = placeName;
+  }
+}
+
+/**
+ * A paste is looked up as soon as it lands. Typing waits for the field to
+ * be left: a half-typed short link is still a well-formed one, and whatever
+ * it resolves to, or does not, is kept for good.
+ */
+function onLinkInput(event: Event) {
+  if ((event as InputEvent).inputType !== "insertFromPaste") return;
+  void lookUp((event.target as HTMLInputElement).value);
+}
+
+function onLinkChange(event: Event) {
+  void lookUp((event.target as HTMLInputElement).value);
+}
+
 async function submitProposal() {
+  // Proposing takes the place from the link's lookup, so a lookup still
+  // under way lands first (the Edge Function gives up after a few seconds).
+  if (lookingUp.value) {
+    busy.value = true;
+    await lookUp(link.value);
+    busy.value = false;
+  }
+
   linkError.value = validateMapsLink(link.value) ?? undefined;
   nameError.value = validatePlaceName(name.value) ?? undefined;
   noteError.value = validateNote(note.value) ?? undefined;
@@ -560,7 +646,6 @@ async function clearDecision() {
         </li>
       </ul>
 
-      <!-- TODO(#9): pasting a Maps short link here fills in the name. -->
       <form
         v-if="proposing"
         ref="proposeForm"
@@ -574,9 +659,11 @@ async function clearDecision() {
           type="url"
           inputmode="url"
           autocomplete="off"
-          hint="Share the place from Google Maps and paste the link."
+          :hint="lookingUp ? 'Looking up the restaurant…' : LINK_HINT"
           :maxlength="MAX_LINK_LENGTH + 20"
           :error="linkError"
+          @input="onLinkInput"
+          @change="onLinkChange"
         />
         <TextField
           v-model="name"

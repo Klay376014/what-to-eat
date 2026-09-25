@@ -168,6 +168,33 @@ export type Database = {
           },
         ];
       };
+      maps_links: {
+        Row: {
+          lat: number | null;
+          lng: number | null;
+          place_cid: string | null;
+          place_name: string | null;
+          resolved_at: string;
+          source_url: string;
+        };
+        Insert: {
+          lat?: number | null;
+          lng?: number | null;
+          place_cid?: string | null;
+          place_name?: string | null;
+          resolved_at?: string;
+          source_url: string;
+        };
+        Update: {
+          lat?: number | null;
+          lng?: number | null;
+          place_cid?: string | null;
+          place_name?: string | null;
+          resolved_at?: string;
+          source_url?: string;
+        };
+        Relationships: [];
+      };
       meals: {
         Row: {
           created_at: string;

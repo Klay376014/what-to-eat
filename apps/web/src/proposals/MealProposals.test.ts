@@ -194,6 +194,218 @@ describe("proposing a restaurant", () => {
   });
 });
 
+describe("pasting a Maps short link (#9)", () => {
+  const ICHIRAN_LINK = "https://maps.app.goo.gl/2avW6UjkkDbgHUwPA";
+  const ICHIRAN = {
+    placeName: "Ichiran Shibuya",
+    placeCid: "11272421852253356408",
+    lat: 35.661,
+    lng: 139.701,
+  };
+
+  async function openForm(wrapper: VueWrapper) {
+    await buttonByText(wrapper, "Propose a restaurant").trigger("click");
+  }
+
+  /** Pastes into the link field, as a person does from the share sheet. */
+  async function paste(wrapper: VueWrapper, text: string) {
+    const link = fieldByLabel(wrapper, "Google Maps link (optional)");
+    link.element.value = text;
+    await link.trigger("input", { inputType: "insertFromPaste" });
+    await flushPromises();
+  }
+
+  async function submit(wrapper: VueWrapper) {
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+  }
+
+  test("fills in the restaurant's name, and the proposal opens Maps at the place", async () => {
+    const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, ` ${ICHIRAN_LINK} `);
+
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("Ichiran Shibuya");
+
+    await submit(wrapper);
+
+    expect(listed(wrapper)[0]).toContain("Ichiran Shibuya");
+    expect(item(wrapper, "Ichiran Shibuya").get("a").attributes("href")).toBe(
+      "https://www.google.com/maps/search/?api=1&query=35.661%2C139.701",
+    );
+  });
+
+  test("the filled-in name can still be changed before proposing", async () => {
+    const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, ICHIRAN_LINK);
+    await fieldByLabel(wrapper, "Restaurant name").setValue("一蘭 渋谷店");
+    await submit(wrapper);
+
+    expect(listed(wrapper)[0]).toContain("一蘭 渋谷店");
+  });
+
+  test("a name already typed is not replaced", async () => {
+    const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await fieldByLabel(wrapper, "Restaurant name").setValue("Ichiran, the one by the station");
+    await paste(wrapper, ICHIRAN_LINK);
+
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe(
+      "Ichiran, the one by the station",
+    );
+  });
+
+  test("a link typed out rather than pasted is looked up once the field is left", async () => {
+    const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    const link = fieldByLabel(wrapper, "Google Maps link (optional)");
+    // Typed, and still in the field (setValue would also leave it).
+    link.element.value = ICHIRAN_LINK;
+    await link.trigger("input");
+    await flushPromises();
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("");
+
+    await link.trigger("change");
+    await flushPromises();
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("Ichiran Shibuya");
+  });
+
+  test("a link that cannot be resolved leaves the name empty and editable, says nothing, and still proposes", async () => {
+    const api = createFakeProposalsApi();
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, "https://maps.app.goo.gl/27Jewne9cvYxC4SW8");
+
+    const name = fieldByLabel(wrapper, "Restaurant name");
+    expect(name.element.value).toBe("");
+    expect(name.attributes("disabled")).toBeUndefined();
+    expect(name.attributes("readonly")).toBeUndefined();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(
+      fieldByLabel(wrapper, "Google Maps link (optional)").attributes("aria-invalid"),
+    ).toBeUndefined();
+
+    await name.setValue("Afuri Ramen Ebisu");
+    await submit(wrapper);
+
+    expect(listed(wrapper)[0]).toContain("Afuri Ramen Ebisu");
+    // With no place, Maps is searched for the name.
+    expect(item(wrapper, "Afuri Ramen Ebisu").get("a").attributes("href")).toBe(
+      "https://www.google.com/maps/search/?api=1&query=Afuri%20Ramen%20Ebisu",
+    );
+  });
+
+  test("a lookup that fails outright is the same as a link that cannot be resolved", async () => {
+    const api = createFakeProposalsApi();
+    api.resolveMapsLink = async () => {
+      throw new Error("network down");
+    };
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, ICHIRAN_LINK);
+
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+
+    await fieldByLabel(wrapper, "Restaurant name").setValue("Ichiran");
+    await submit(wrapper);
+    expect(listed(wrapper)[0]).toContain("Ichiran");
+  });
+
+  test("an answer for a link that has since been replaced is ignored", async () => {
+    const OTHER_LINK = "https://maps.app.goo.gl/2nWdWPR2gTpXpxqx6";
+    let answer!: () => void;
+    const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
+    const resolve = api.resolveMapsLink.bind(api);
+    api.resolveMapsLink = (url) =>
+      new Promise((done) => {
+        answer = () => done(resolve(url));
+      });
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, ICHIRAN_LINK);
+    await fieldByLabel(wrapper, "Google Maps link (optional)").setValue(OTHER_LINK);
+    answer();
+    await flushPromises();
+
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("");
+  });
+
+  test("a link changed and changed back before the answer still fills in the name", async () => {
+    let answer!: () => void;
+    const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
+    const resolve = api.resolveMapsLink.bind(api);
+    api.resolveMapsLink = (url) =>
+      new Promise((done) => {
+        answer = () => done(resolve(url));
+      });
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, ICHIRAN_LINK);
+    const link = fieldByLabel(wrapper, "Google Maps link (optional)");
+    link.element.value = `${ICHIRAN_LINK}x`;
+    await link.trigger("input");
+    link.element.value = ICHIRAN_LINK;
+    await link.trigger("input");
+    answer();
+    await flushPromises();
+
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("Ichiran Shibuya");
+  });
+
+  test("proposing while the link is still being looked up waits for it, so the place is kept", async () => {
+    let answer!: () => void;
+    const api = createFakeProposalsApi({ places: { [ICHIRAN_LINK]: ICHIRAN } });
+    const resolve = api.resolveMapsLink.bind(api);
+    api.resolveMapsLink = (url) =>
+      new Promise((done) => {
+        answer = () => done(resolve(url));
+      });
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, ICHIRAN_LINK);
+    expect(wrapper.text()).toContain("Looking up the restaurant…");
+    await fieldByLabel(wrapper, "Restaurant name").setValue("一蘭");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(listed(wrapper)).toEqual([]);
+
+    answer();
+    await flushPromises();
+
+    expect(listed(wrapper)[0]).toContain("一蘭");
+    expect(item(wrapper, "一蘭").get("a").attributes("href")).toBe(
+      "https://www.google.com/maps/search/?api=1&query=35.661%2C139.701",
+    );
+  });
+
+  test("anything but a Maps short link is not looked up", async () => {
+    const api = createFakeProposalsApi({
+      places: { "https://www.google.com/maps/place/Ichiran": ICHIRAN },
+    });
+    const wrapper = await mountProposals(api);
+    await openForm(wrapper);
+
+    await paste(wrapper, "https://www.google.com/maps/place/Ichiran");
+
+    expect(fieldByLabel(wrapper, "Restaurant name").element.value).toBe("");
+  });
+});
+
 describe("the list", () => {
   test("shows every proposal oldest first, who proposed it and when, on the trip's clock", async () => {
     const api = createFakeProposalsApi({

@@ -3,4 +3,10 @@
 declare namespace Deno {
   export const env: { get(name: string): string | undefined };
   export function serve(handler: (req: Request) => Response | Promise<Response>): unknown;
+  export interface Conn {
+    read(p: Uint8Array): Promise<number | null>;
+    write(p: Uint8Array): Promise<number>;
+    close(): void;
+  }
+  export function connectTls(options: { hostname: string; port: number }): Promise<Conn>;
 }

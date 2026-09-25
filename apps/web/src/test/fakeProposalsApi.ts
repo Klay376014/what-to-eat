@@ -1,5 +1,6 @@
 import type { Proposal } from "../proposals/proposal.ts";
 import type { Decision } from "../proposals/decision.ts";
+import type { ResolvedPlace } from "../proposals/mapsLink.ts";
 import {
   AlreadyDecidedError,
   NameLockedError,
@@ -24,8 +25,9 @@ export interface FakeProposalsApi extends ProposalsApi {
  * backend, not a record of calls. Like the database, it keeps a meal's
  * proposals oldest first, stores optional text trimmed or null, keeps one
  * vote per member per proposal, locks a name while it has votes, keeps one
- * decision per meal from the meal's own proposals, and refuses to change a
- * locked or decided name.
+ * decision per meal from the meal's own proposals, refuses to change a
+ * locked or decided name, and gives a proposal made with a Maps link that
+ * was already resolved that place's coordinates.
  *
  * It knows nothing about who may see or edit what. Access control is the
  * database's job and is tested there (supabase/tests/database/), never
@@ -41,11 +43,19 @@ export function createFakeProposalsApi(
      * where the database queues the meal for its calendar (#12).
      */
     onDecisionChange?: (mealId: string, decided: boolean) => void;
+    /**
+     * What each Maps short link resolves to (#9), by the link as pasted
+     * (trimmed); any other link could not be resolved.
+     */
+    places?: Record<string, ResolvedPlace>;
   } = {},
 ): FakeProposalsApi {
   const changed = options.onDecisionChange ?? (() => {});
   const me = options.me ?? { id: "me", name: "Mei Lin" };
   const proposals = (options.proposals ?? []).map((p) => ({ ...p, votes: [...p.votes] }));
+  const places = new Map(Object.entries(options.places ?? {}));
+  /** The links resolved so far: the database's maps_links, which proposing reads. */
+  const resolved = new Map<string, ResolvedPlace>();
   let nextId = 1;
   // Each new proposal is a minute after the last, starting 24 Sep 2026 02:00 UTC.
   let clock = Date.parse("2026-09-24T02:00:00Z");
@@ -91,14 +101,16 @@ export function createFakeProposalsApi(
         .map(copy);
     },
     async propose(input) {
+      // As the database's trigger does, from the link's resolution.
+      const place = input.sourceUrl === null ? undefined : resolved.get(input.sourceUrl);
       const proposal: Proposal = {
         id: `proposal-${nextId++}`,
         mealId: input.mealId,
         placeName: input.placeName.trim(),
         sourceUrl: input.sourceUrl,
         note: input.note,
-        lat: null,
-        lng: null,
+        lat: place?.lat ?? null,
+        lng: place?.lng ?? null,
         proposedBy: me.id,
         proposedByMe: true,
         proposerName: me.name,
@@ -155,6 +167,12 @@ export function createFakeProposalsApi(
     async clearDecision(mealId) {
       if (!decisions.delete(mealId)) throw new Error("This decision can no longer be cleared.");
       changed(mealId, false);
+    },
+    async resolveMapsLink(sourceUrl) {
+      const place = places.get(sourceUrl.trim());
+      if (!place) return null;
+      resolved.set(sourceUrl.trim(), place);
+      return { ...place };
     },
     decideAs(mealId, proposalId, decider) {
       decisions.set(mealId, makeDecision(mealId, proposalId, decider));

@@ -104,13 +104,25 @@ export function mapsUrl(place: Pick<Proposal, "placeName" | "lat" | "lng">): str
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
+/**
+ * A member as the meal names them after "Proposed by" or "Decided by": you,
+ * their name, or what is known once the name or the account is gone.
+ */
+export function memberLabel(member: { isMe: boolean; id: string | null; name: string | null }) {
+  if (member.isMe) return "you";
+  if (member.id === null) return "a member who deleted their account";
+  return member.name ?? "a member with no name";
+}
+
 /** Who proposed it, as the list says it: "Proposed by <this>". */
 export function proposerLabel(
   proposal: Pick<Proposal, "proposedBy" | "proposedByMe" | "proposerName">,
 ): string {
-  if (proposal.proposedByMe) return "you";
-  if (proposal.proposedBy === null) return "a member who deleted their account";
-  return proposal.proposerName ?? "a member with no name";
+  return memberLabel({
+    isMe: proposal.proposedByMe,
+    id: proposal.proposedBy,
+    name: proposal.proposerName,
+  });
 }
 
 /**

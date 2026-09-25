@@ -17,9 +17,12 @@ import { proposalsApiKey } from "./proposalsApi.ts";
 
 const MEAL = "meal-dinner";
 
-async function mountProposals(api: ProposalsApi = createFakeProposalsApi()) {
+async function mountProposals(
+  api: ProposalsApi = createFakeProposalsApi(),
+  { organiser = false }: { organiser?: boolean } = {},
+) {
   const wrapper = mount(MealProposals, {
-    props: { mealId: MEAL, mealName: "Dinner", timeZone: "Asia/Tokyo" },
+    props: { mealId: MEAL, mealName: "Dinner", timeZone: "Asia/Tokyo", organiser },
     global: { provide: { [proposalsApiKey as symbol]: api } },
     attachTo: document.body,
   });
@@ -81,7 +84,7 @@ describe("proposing a restaurant", () => {
     await propose(wrapper, { name: "  Afuri Ramen Ebisu " });
 
     expect(listed(wrapper)).toEqual([
-      "Afuri Ramen Ebisu Proposed by you, Thu 24 Sep, 11:01 Edit Afuri Ramen Ebisu",
+      "Afuri Ramen Ebisu Proposed by you, Thu 24 Sep, 11:01 Decide on this Afuri Ramen Ebisu Edit Afuri Ramen Ebisu",
     ]);
     expect(wrapper.text()).not.toContain("Nobody has proposed");
     // The form closes, ready for the next one.
@@ -213,8 +216,8 @@ describe("the list", () => {
     const wrapper = await mountProposals(api);
 
     expect(listed(wrapper)).toEqual([
-      "Tsuta Proposed by Alice Chen, Tue 22 Sep, 08:15",
-      "Ichiran Proposed by Bob Lin, Tue 22 Sep, 18:30",
+      "Tsuta Proposed by Alice Chen, Tue 22 Sep, 08:15 Decide on this Tsuta",
+      "Ichiran Proposed by Bob Lin, Tue 22 Sep, 18:30 Decide on this Ichiran",
     ]);
   });
 
@@ -233,7 +236,7 @@ describe("the list", () => {
     const wrapper = await mountProposals(api);
 
     expect(listed(wrapper)).toEqual([
-      "Tsuta Proposed by a member who deleted their account, Tue 22 Sep, 08:15",
+      "Tsuta Proposed by a member who deleted their account, Tue 22 Sep, 08:15 Decide on this Tsuta",
     ]);
   });
 
@@ -288,7 +291,7 @@ describe("editing your own proposal", () => {
     await flushPromises();
 
     expect(listed(wrapper)).toEqual([
-      "Afuri Ramen Ebisu Proposed by you, Thu 24 Sep, 11:01 Yuzu shio Edit Afuri Ramen Ebisu",
+      "Afuri Ramen Ebisu Proposed by you, Thu 24 Sep, 11:01 Yuzu shio Decide on this Afuri Ramen Ebisu Edit Afuri Ramen Ebisu",
     ]);
     expect(document.activeElement?.textContent?.replace(/\s+/g, " ").trim()).toBe(
       "Edit Afuri Ramen Ebisu",
@@ -511,6 +514,24 @@ describe("voting", () => {
     expect(summary()).toBe("You've voted on every proposal.");
   });
 
+  test("a meal with no proposals has no voting summary, and a failed decision does not hide it", async () => {
+    const empty = await mountProposals();
+    expect(empty.find(".vote-summary").exists()).toBe(false);
+
+    const api = createFakeProposalsApi({
+      proposals: [aProposal({ mealId: MEAL, placeName: "Afuri" })],
+    });
+    api.decide = async () => {
+      throw new Error("network down");
+    };
+    const wrapper = await mountProposals(api);
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Couldn't decide: network down");
+    expect(wrapper.get(".vote-summary").text()).toBe("You haven't voted on 1 of 1 proposal.");
+  });
+
   test("a new proposal counts as one you have not voted on yet", async () => {
     const wrapper = await mountProposals();
 
@@ -558,5 +579,196 @@ describe("voting", () => {
     await press(wrapper, "Afuri", "+1");
     await buttonByText(wrapper, "Edit Afuri").trigger("click");
     expect(wrapper.findAll("label").map((l) => l.text())).toContain("Restaurant name");
+  });
+});
+
+describe("deciding", () => {
+  const ALICE = { id: "alice", name: "Alice Chen" };
+
+  function withTwo(options: Partial<Parameters<typeof aProposal>[0]> = {}) {
+    return createFakeProposalsApi({
+      proposals: [
+        aProposal({
+          id: "afuri",
+          mealId: MEAL,
+          placeName: "Afuri",
+          sourceUrl: "https://maps.app.goo.gl/AbCdEf123",
+          note: "Near the station",
+          proposerName: "Bob Lin",
+          ...options,
+        }),
+        aProposal({ id: "tsuta", mealId: MEAL, placeName: "Tsuta" }),
+      ],
+    });
+  }
+
+  /** The decision as a person reads it, line by line, whitespace collapsed. */
+  function decisionLines(wrapper: VueWrapper) {
+    const panel = wrapper.find(".decision");
+    if (!panel.exists()) return null;
+    return [...panel.element.children].map((line) =>
+      (line.textContent ?? "").replace(/\s+/g, " ").trim(),
+    );
+  }
+
+  function buttons(wrapper: VueWrapper) {
+    return wrapper.findAll("button").map((b) => b.text().replace(/\s+/g, " ").trim());
+  }
+
+  function decided(wrapper: VueWrapper) {
+    return (wrapper.emitted<[string | null]>("decided") ?? []).map(([name]) => name);
+  }
+
+  test("an undecided meal offers every member deciding on each proposal", async () => {
+    const wrapper = await mountProposals(withTwo());
+
+    expect(decisionLines(wrapper)).toBeNull();
+    expect(buttons(wrapper)).toContain("Decide on this Afuri");
+    expect(buttons(wrapper)).toContain("Decide on this Tsuta");
+    expect(decided(wrapper)).toEqual([null]);
+  });
+
+  test("deciding shows the restaurant, its Maps link, the proposer's note, and who decided when", async () => {
+    const api = withTwo();
+    const wrapper = await mountProposals(api);
+
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    expect(decisionLines(wrapper)).toEqual([
+      "Decided",
+      "Afuri",
+      "Near the station",
+      "Decided by you, Thu 24 Sep, 11:01",
+      "Open in Google Maps: Afuri Clear the decision",
+    ]);
+    const link = wrapper.get(".decision a");
+    expect(link.attributes("href")).toBe("https://www.google.com/maps/search/?api=1&query=Afuri");
+    expect(item(wrapper, "Afuri").find(".decided-mark").exists()).toBe(true);
+    expect(item(wrapper, "Tsuta").find(".decided-mark").exists()).toBe(false);
+    expect((await api.getDecision(MEAL))?.proposalId).toBe("afuri");
+  });
+
+  test("tells the grid at once, so the slot shows the decision", async () => {
+    const wrapper = await mountProposals(withTwo());
+
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    expect(decided(wrapper)).toEqual([null, "Afuri"]);
+  });
+
+  test("the member who decided changes it to another proposal", async () => {
+    const api = withTwo();
+    const wrapper = await mountProposals(api);
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    expect(buttons(wrapper)).not.toContain("Decide on this Afuri");
+    await buttonByText(wrapper, "Decide on this instead Tsuta").trigger("click");
+    await flushPromises();
+
+    expect(decisionLines(wrapper)?.[1]).toBe("Tsuta");
+    expect(decided(wrapper)).toEqual([null, "Afuri", "Tsuta"]);
+    expect((await api.getDecision(MEAL))?.proposalId).toBe("tsuta");
+  });
+
+  test("the member who decided clears it, and the meal is open again", async () => {
+    const api = withTwo();
+    const wrapper = await mountProposals(api);
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    await buttonByText(wrapper, "Clear the decision").trigger("click");
+    await flushPromises();
+
+    expect(decisionLines(wrapper)).toBeNull();
+    expect(buttons(wrapper)).toContain("Decide on this Afuri");
+    expect(decided(wrapper)).toEqual([null, "Afuri", null]);
+    expect(await api.getDecision(MEAL)).toBeNull();
+  });
+
+  test("a member who did not decide sees the decision but is offered no way to change or clear it", async () => {
+    const api = withTwo();
+    api.decideAs(MEAL, "afuri", ALICE);
+    const wrapper = await mountProposals(api);
+
+    expect(decisionLines(wrapper)?.slice(0, 2)).toEqual(["Decided", "Afuri"]);
+    expect(decisionLines(wrapper)).toContain("Decided by Alice Chen, Thu 24 Sep, 11:01");
+    expect(decided(wrapper)).toEqual(["Afuri"]);
+    const labels = buttons(wrapper);
+    expect(labels.some((l) => l.startsWith("Decide on this"))).toBe(false);
+    expect(labels).not.toContain("Clear the decision");
+  });
+
+  test("the organiser may change or clear someone else's decision", async () => {
+    const api = withTwo();
+    api.decideAs(MEAL, "afuri", ALICE);
+    const wrapper = await mountProposals(api, { organiser: true });
+
+    expect(buttons(wrapper)).toContain("Decide on this instead Tsuta");
+    await buttonByText(wrapper, "Clear the decision").trigger("click");
+    await flushPromises();
+
+    expect(decisionLines(wrapper)).toBeNull();
+    expect(await api.getDecision(MEAL)).toBeNull();
+  });
+
+  test("a decision whose decider deleted their account says so", async () => {
+    const api = withTwo();
+    api.decideAs(MEAL, "afuri", { id: "gone", name: null });
+    const decision = await api.getDecision(MEAL);
+    const orphaned = createFakeProposalsApi({
+      proposals: await api.listProposals(MEAL),
+      decisions: [{ ...decision!, decidedBy: null }],
+    });
+    const wrapper = await mountProposals(orphaned);
+
+    expect(decisionLines(wrapper)).toContain(
+      "Decided by a member who deleted their account, Thu 24 Sep, 11:01",
+    );
+  });
+
+  test("when someone else decided first, says so and shows their decision", async () => {
+    const api = withTwo();
+    const wrapper = await mountProposals(api);
+
+    api.decideAs(MEAL, "tsuta", ALICE);
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      "Alice Chen decided it just now, so your choice was not saved.",
+    );
+    expect(decisionLines(wrapper)?.[1]).toBe("Tsuta");
+    expect(decided(wrapper)).toEqual([null, "Tsuta"]);
+  });
+
+  test("a failed decision says why and leaves the meal as it was", async () => {
+    const api = withTwo();
+    api.decide = async () => {
+      throw new Error("network down");
+    };
+    const wrapper = await mountProposals(api);
+
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe("Couldn't decide: network down");
+    expect(decisionLines(wrapper)).toBeNull();
+  });
+
+  test("the decided restaurant's name stays, and its proposer is told why", async () => {
+    const api = withTwo({ proposedBy: "me", proposedByMe: true });
+    const wrapper = await mountProposals(api);
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+
+    await buttonByText(wrapper, "Edit Afuri").trigger("click");
+
+    expect(wrapper.findAll("label").map((l) => l.text())).not.toContain("Restaurant name");
+    expect(wrapper.get("form").text()).toContain(
+      "It's the decided restaurant, so the name stays as it was chosen. You can still change the note.",
+    );
   });
 });

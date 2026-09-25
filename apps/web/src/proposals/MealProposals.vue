@@ -10,9 +10,16 @@
  * own vote again withdraws it; there is no abstain button, since no vote is
  * no opinion.
  *
- * Which buttons appear is for convenience only. Who may propose, edit and
- * vote, and the name lock, are enforced by the database
- * (supabase/migrations/20260926090000_proposals.sql, 20260927090000_votes.sql).
+ * Any member decides the meal by choosing one of its proposals (#11); the
+ * decision sits above the list with the restaurant, its Maps link, the
+ * proposer's note, and who decided when. Only the member who decided, or the
+ * organiser, is offered changing or clearing it. A decided restaurant's name
+ * stays, like a voted-on one.
+ *
+ * Which buttons appear is for convenience only. Who may propose, edit, vote
+ * and decide, and the name locks, are enforced by the database
+ * (supabase/migrations/20260926090000_proposals.sql, 20260927090000_votes.sql,
+ * 20260928090000_decisions.sql).
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { errorMessage } from "../lib/errors.ts";
@@ -34,7 +41,8 @@ import {
   validatePlaceName,
   type Proposal,
 } from "./proposal.ts";
-import { NameLockedError, useProposalsApi } from "./proposalsApi.ts";
+import { canChangeDecision, deciderLabel, type Decision } from "./decision.ts";
+import { AlreadyDecidedError, NameLockedError, useProposalsApi } from "./proposalsApi.ts";
 import { myVote, tally, unvotedByMe, voterLabel, type Vote, type VoteValue } from "./vote.ts";
 
 const props = defineProps<{
@@ -43,14 +51,19 @@ const props = defineProps<{
   mealName: string;
   /** The trip's timezone: when a proposal was made is shown on its clock. */
   timeZone: string;
+  /** Whether the signed-in member organises the trip, and so may change any decision. */
+  organiser: boolean;
 }>();
 const emit = defineEmits<{
   /** How many proposals the meal has, whenever that is learnt anew. */
   count: [proposals: number];
+  /** The decided restaurant's name, or null, whenever that is learnt anew. */
+  decided: [restaurant: string | null];
 }>();
 
 const api = useProposalsApi();
 const headingId = useId();
+const decisionHeadingId = useId();
 
 const proposals = ref<Proposal[]>([]);
 const loading = ref(true);
@@ -61,8 +74,14 @@ async function load() {
   loading.value = true;
   loadFailure.value = null;
   try {
-    proposals.value = await api.listProposals(props.mealId);
+    const [list, found] = await Promise.all([
+      api.listProposals(props.mealId),
+      api.getDecision(props.mealId),
+    ]);
+    proposals.value = list;
+    decision.value = found;
     emit("count", proposals.value.length);
+    announceDecision();
   } catch (error) {
     loadFailure.value = `Couldn't load the proposals: ${errorMessage(error)}`;
   } finally {
@@ -171,9 +190,8 @@ function replace(updated: Proposal) {
 }
 
 async function submitEdit(proposal: Proposal) {
-  editNameError.value = proposal.nameLocked
-    ? undefined
-    : (validatePlaceName(editName.value) ?? undefined);
+  const nameFixed = proposal.nameLocked || isDecided(proposal);
+  editNameError.value = nameFixed ? undefined : (validatePlaceName(editName.value) ?? undefined);
   editNoteError.value = validateNote(editNote.value) ?? undefined;
   if (editNameError.value || editNoteError.value) return;
 
@@ -182,19 +200,25 @@ async function submitEdit(proposal: Proposal) {
   try {
     replace(
       await api.editProposal(proposal.id, {
-        ...(proposal.nameLocked ? {} : { placeName: editName.value.trim() }),
+        ...(nameFixed ? {} : { placeName: editName.value.trim() }),
         note: optionalText(editNote.value),
       }),
     );
     await cancelEditing();
   } catch (error) {
-    if (error instanceof NameLockedError) {
+    if (error instanceof NameLockedError && error.reason === "voted") {
       // Someone voted while the name was being edited: show it locked, and
       // keep the typed note for saving again.
       replace({ ...proposal, nameLocked: true });
       editName.value = proposal.placeName;
       editFailure.value =
         "Someone voted on it just now, so the name can no longer change. Your note was not saved either; save it again.";
+    } else if (error instanceof NameLockedError) {
+      // Someone decided on it meanwhile: show the decision, and keep the note.
+      editName.value = proposal.placeName;
+      await refreshDecision();
+      editFailure.value =
+        "Someone decided on it just now, so the name can no longer change. Your note was not saved either; save it again.";
     } else {
       editFailure.value = `Couldn't save it: ${errorMessage(error)}`;
     }
@@ -249,6 +273,81 @@ async function toggleVote(proposal: Proposal, value: VoteValue) {
     votingProposalId.value = null;
   }
 }
+
+// Deciding --------------------------------------------------------------------
+
+const decision = ref<Decision | null>(null);
+const decideFailure = ref<string | null>(null);
+
+const decidedProposal = computed(() =>
+  decision.value
+    ? (proposals.value.find((p) => p.id === decision.value!.proposalId) ?? null)
+    : null,
+);
+const mayChangeDecision = computed(
+  () =>
+    decision.value !== null && canChangeDecision(decision.value, { organiser: props.organiser }),
+);
+
+function isDecided(proposal: Proposal): boolean {
+  return decision.value?.proposalId === proposal.id;
+}
+
+/** What deciding on this proposal is offered as, or null when it is not offered. */
+function decideLabel(proposal: Proposal): string | null {
+  if (!decision.value) return "Decide on this";
+  if (mayChangeDecision.value && !isDecided(proposal)) return "Decide on this instead";
+  return null;
+}
+
+function announceDecision() {
+  emit("decided", decidedProposal.value?.placeName ?? null);
+}
+
+/** Reads the decision again after the database refused a change to it. */
+async function refreshDecision() {
+  try {
+    decision.value = await api.getDecision(props.mealId);
+    announceDecision();
+  } catch {
+    // The refusal is already being explained; the next load will catch up.
+  }
+}
+
+async function decideOn(proposal: Proposal) {
+  busy.value = true;
+  decideFailure.value = null;
+  try {
+    decision.value = decision.value
+      ? await api.changeDecision(props.mealId, proposal.id)
+      : await api.decide(props.mealId, proposal.id);
+    announceDecision();
+  } catch (error) {
+    if (error instanceof AlreadyDecidedError) {
+      await refreshDecision();
+      const who = decision.value ? deciderLabel(decision.value) : "someone else";
+      decideFailure.value = `${who.charAt(0).toUpperCase()}${who.slice(1)} decided it just now, so your choice was not saved.`;
+    } else {
+      decideFailure.value = `Couldn't decide: ${errorMessage(error)}`;
+    }
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function clearDecision() {
+  busy.value = true;
+  decideFailure.value = null;
+  try {
+    await api.clearDecision(props.mealId);
+    decision.value = null;
+    announceDecision();
+  } catch (error) {
+    decideFailure.value = `Couldn't clear the decision: ${errorMessage(error)}`;
+  } finally {
+    busy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -267,11 +366,50 @@ async function toggleVote(proposal: Proposal, value: VoteValue) {
         Nobody has proposed a restaurant for {{ mealName.toLowerCase() }} yet.
       </p>
 
-      <p v-else class="vote-summary">{{ voteSummary }}</p>
+      <section
+        v-if="decision && decidedProposal"
+        class="decision stack-sm"
+        :aria-labelledby="decisionHeadingId"
+      >
+        <h4 :id="decisionHeadingId" class="decision-heading">Decided</h4>
+        <p class="name">{{ decidedProposal.placeName }}</p>
+        <p v-if="decidedProposal.note" class="note">{{ decidedProposal.note }}</p>
+        <p class="byline">
+          Decided by {{ deciderLabel(decision) }},
+          <time :datetime="decision.decidedAt">{{
+            formatProposedAt(decision.decidedAt, timeZone)
+          }}</time>
+        </p>
+        <div v-if="decidedProposal.sourceUrl || mayChangeDecision" class="actions proposal-actions">
+          <a
+            v-if="decidedProposal.sourceUrl"
+            class="maps-link"
+            :href="mapsUrl(decidedProposal)"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <BaseIcon name="map-trifold" />
+            <span>
+              Open in Google Maps<span class="visually-hidden">{{
+                `: ${decidedProposal.placeName}`
+              }}</span>
+            </span>
+          </a>
+          <BaseButton v-if="mayChangeDecision" :disabled="busy" @click="clearDecision">
+            Clear the decision
+          </BaseButton>
+        </div>
+      </section>
+      <p v-if="decideFailure" role="alert" class="error">{{ decideFailure }}</p>
+
+      <p v-if="proposals.length > 0" class="vote-summary">{{ voteSummary }}</p>
 
       <ul v-if="proposals.length > 0" class="proposals">
         <li v-for="proposal in proposals" :key="proposal.id" class="proposal stack-sm">
-          <p class="name">{{ proposal.placeName }}</p>
+          <p class="name">
+            {{ proposal.placeName
+            }}<span v-if="isDecided(proposal)" class="decided-mark">Decided</span>
+          </p>
           <p class="byline">
             Proposed by {{ proposerLabel(proposal) }},
             <time :datetime="proposal.createdAt">{{
@@ -327,7 +465,11 @@ async function toggleVote(proposal: Proposal, value: VoteValue) {
             novalidate
             @submit.prevent="submitEdit(proposal)"
           >
-            <p v-if="proposal.nameLocked" class="hint">
+            <p v-if="isDecided(proposal)" class="hint">
+              It's the decided restaurant, so the name stays as it was chosen. You can still change
+              the note.
+            </p>
+            <p v-else-if="proposal.nameLocked" class="hint">
               Someone has voted on it, so the name stays as they saw it. You can still change the
               note.
             </p>
@@ -353,7 +495,7 @@ async function toggleVote(proposal: Proposal, value: VoteValue) {
           </form>
 
           <div
-            v-else-if="proposal.sourceUrl || proposal.proposedByMe"
+            v-else-if="proposal.sourceUrl || proposal.proposedByMe || decideLabel(proposal)"
             class="actions proposal-actions"
           >
             <a
@@ -370,6 +512,10 @@ async function toggleVote(proposal: Proposal, value: VoteValue) {
                 }}</span>
               </span>
             </a>
+            <BaseButton v-if="decideLabel(proposal)" :disabled="busy" @click="decideOn(proposal)">
+              {{ decideLabel(proposal)
+              }}<span class="visually-hidden">{{ ` ${proposal.placeName}` }}</span>
+            </BaseButton>
             <BaseButton
               v-if="proposal.proposedByMe"
               ref="editButton"
@@ -467,6 +613,29 @@ async function toggleVote(proposal: Proposal, value: VoteValue) {
 
 .note {
   white-space: pre-line;
+}
+
+/* The answer to the meal, on the decided colours the grid's pin uses. */
+.decision {
+  padding: var(--space-3);
+  background: var(--surface);
+  border: calc(var(--border-width) * 2) solid var(--decided-border);
+  border-radius: var(--radius-slot);
+}
+
+.decision-heading {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.decided-mark {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-slot);
+  background: var(--decided-bg);
+  color: var(--decided-fg);
+  font-size: var(--text-sm);
 }
 
 .vote-summary {

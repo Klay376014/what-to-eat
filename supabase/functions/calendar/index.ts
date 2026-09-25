@@ -4,10 +4,14 @@
 //   connect  Finishes Google's consent: trades the code for a refresh token,
 //            which is kept here and never sent back, creates the trip's
 //            secondary calendar on the member's account, and writes every
-//            decision waiting for it.
+//            decision waiting for it. When the trip has a calendar already,
+//            this is a takeover (#13): the member's new calendar replaces it
+//            and every decided meal is written again, there. The holder
+//            connecting again keeps their calendar if it is still there.
 //   sync     Writes whatever the trip's calendar queue is waiting for. The
 //            app asks for this after each decision, change or clear, and
-//            when a trip opens with meals still waiting.
+//            when a trip opens; a pass with nothing to write still asks
+//            Google for a token, which is how a dead connection is found.
 //
 // verify_jwt is off (supabase/config.toml): the platform's check only
 // understands the legacy JWT keys, so the caller is checked here instead.
@@ -104,24 +108,36 @@ function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
 async function connect(
   tripId: string,
   userId: string,
-  body: { code?: unknown; codeVerifier?: unknown; redirectUri?: unknown },
+  body: { code?: unknown; codeVerifier?: unknown; redirectUri?: unknown; replacing?: unknown },
 ) {
-  const { code, codeVerifier, redirectUri } = body;
+  const { code, codeVerifier, redirectUri, replacing } = body;
   if (
     typeof code !== "string" ||
     typeof codeVerifier !== "string" ||
-    typeof redirectUri !== "string"
+    typeof redirectUri !== "string" ||
+    (replacing !== undefined && replacing !== null && typeof replacing !== "string")
   ) {
     throw new Refusal(400, "The answer from Google was incomplete. Try connecting again.");
   }
 
   const { data: existing, error: existingError } = await admin
     .from("calendar_grants")
-    .select("holder_id")
+    .select("holder_id, calendar_id")
     .eq("trip_id", tripId)
     .maybeSingle();
   if (existingError) throw existingError;
-  if (existing) throw new Refusal(409, "This trip already has a calendar connected.");
+  // What the member saw when they went to Google must still be the case:
+  // connecting where there was no calendar never takes over one made
+  // meanwhile, and of two members taking over at once only one does.
+  if (existing && !replacing) {
+    throw new Refusal(409, "This trip already has a calendar connected.");
+  }
+  if (existing && existing.calendar_id !== replacing) {
+    throw new Refusal(
+      409,
+      "The trip calendar changed while you were at Google. Look at it again before taking over.",
+    );
+  }
 
   const { data: trip, error: tripError } = await admin
     .from("trips")
@@ -138,11 +154,38 @@ async function connect(
     throw new Refusal(400, "Google didn't grant lasting access. Try connecting again.");
   }
 
+  if (existing?.calendar_id) {
+    await takeOver(
+      tripId,
+      userId,
+      existing.holder_id,
+      existing.calendar_id,
+      tokens.refreshToken,
+      trip,
+    );
+  } else {
+    await connectFirst(tripId, userId, tokens.refreshToken, trip);
+  }
+  return syncTrip(admin, tripId, creds());
+}
+
+interface TripNaming {
+  name: string;
+  timezone: string;
+}
+
+/** The trip's first calendar (#12). */
+async function connectFirst(
+  tripId: string,
+  userId: string,
+  refreshToken: string,
+  trip: TripNaming,
+): Promise<void> {
   // Claim the trip's calendar before making it, so two members connecting at
   // once cannot both make one: the second insert meets the primary key.
   const { error: claimError } = await admin
     .from("calendar_grants")
-    .insert({ trip_id: tripId, holder_id: userId, refresh_token: tokens.refreshToken });
+    .insert({ trip_id: tripId, holder_id: userId, refresh_token: refreshToken });
   if (claimError?.code === "23505") {
     throw new Refusal(409, "Someone else connected a calendar for this trip just now.");
   }
@@ -151,7 +194,7 @@ async function connect(
   let calendar: Calendar | null = null;
   let calendarId: string | null = null;
   try {
-    calendar = new Calendar(await accessToken(tokens.refreshToken, creds()));
+    calendar = new Calendar(await accessToken(refreshToken, creds()));
     const made = calendar;
     calendarId = await oneAtATime(() => made.createCalendar(trip.name, trip.timezone));
     const { error } = await admin
@@ -166,8 +209,58 @@ async function connect(
     await admin.from("calendar_grants").delete().eq("trip_id", tripId);
     throw error;
   }
+}
 
-  return syncTrip(admin, tripId, creds());
+/**
+ * A calendar for a trip that has one (#13). Its holder connecting again,
+ * with the calendar still found from the account they connected, only renews
+ * the connection. Anyone else, or a holder whose calendar is not found (it
+ * was deleted, or they chose another Google account), gets a new calendar of
+ * their own, which replaces the old one if the trip is still on it; the
+ * database then queues every decided meal to be written to it.
+ */
+async function takeOver(
+  tripId: string,
+  userId: string,
+  holderId: string,
+  fromCalendarId: string,
+  refreshToken: string,
+  trip: TripNaming,
+): Promise<void> {
+  const calendar = new Calendar(await accessToken(refreshToken, creds()));
+
+  if (holderId === userId && (await calendar.calendarExists(fromCalendarId))) {
+    const { data, error } = await admin
+      .from("calendar_grants")
+      .update({ refresh_token: refreshToken, lapsed_at: null, lapse_reason: null })
+      .eq("trip_id", tripId)
+      .eq("holder_id", userId)
+      .eq("calendar_id", fromCalendarId)
+      .select("trip_id");
+    if (error) throw error;
+    if (data.length === 0) throw new Refusal(409, "Someone else took over the calendar just now.");
+    return;
+  }
+
+  // Made first, and the grant moved to it only if nobody beat us to it: the
+  // trip is never without a calendar meanwhile, and a lost race leaves
+  // nothing behind on the member's account.
+  const calendarId = await oneAtATime(() => calendar.createCalendar(trip.name, trip.timezone));
+  let moved = false;
+  try {
+    const { data, error } = await admin.rpc("hand_over_calendar", {
+      trip_id: tripId,
+      from_calendar_id: fromCalendarId,
+      holder_id: userId,
+      refresh_token: refreshToken,
+      calendar_id: calendarId,
+    });
+    if (error) throw error;
+    moved = data;
+  } finally {
+    if (!moved) await calendar.deleteCalendar(calendarId).catch(() => {});
+  }
+  if (!moved) throw new Refusal(409, "Someone else took over the calendar just now.");
 }
 
 Deno.serve(async (req) => {

@@ -66,22 +66,37 @@ export type Database = {
         Row: {
           calendar_id: string | null;
           connected_at: string;
+          event_suffix: string;
           holder_id: string;
-          refresh_token: string;
+          lapse_reason: string | null;
+          lapsed_at: string | null;
+          previous_calendar_id: string | null;
+          previous_holder_id: string | null;
+          refresh_token: string | null;
           trip_id: string;
         };
         Insert: {
           calendar_id?: string | null;
           connected_at?: string;
+          event_suffix?: string;
           holder_id: string;
-          refresh_token: string;
+          lapse_reason?: string | null;
+          lapsed_at?: string | null;
+          previous_calendar_id?: string | null;
+          previous_holder_id?: string | null;
+          refresh_token?: string | null;
           trip_id: string;
         };
         Update: {
           calendar_id?: string | null;
           connected_at?: string;
+          event_suffix?: string;
           holder_id?: string;
-          refresh_token?: string;
+          lapse_reason?: string | null;
+          lapsed_at?: string | null;
+          previous_calendar_id?: string | null;
+          previous_holder_id?: string | null;
+          refresh_token?: string | null;
           trip_id?: string;
         };
         Relationships: [
@@ -466,6 +481,17 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      forget_previous_calendar: { Args: { trip_id: string }; Returns: undefined };
+      hand_over_calendar: {
+        Args: {
+          calendar_id: string;
+          from_calendar_id: string;
+          holder_id: string;
+          refresh_token: string;
+          trip_id: string;
+        };
+        Returns: boolean;
+      };
       finish_calendar_event: {
         Args: {
           calendar_id: string | null;
@@ -506,6 +532,10 @@ export type Database = {
         }[];
       };
       keepalive: { Args: never; Returns: number };
+      lapse_calendar: {
+        Args: { calendar_id: string; reason: string; refresh_token: string; trip_id: string };
+        Returns: boolean;
+      };
       leave_trip: { Args: { trip_id: string }; Returns: undefined };
       remove_member: {
         Args: { trip_id: string; user_id: string };

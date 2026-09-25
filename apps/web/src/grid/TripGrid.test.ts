@@ -12,7 +12,11 @@ import {
 } from "../test/fakeProposalsApi.ts";
 import { aTrip } from "../test/fakeTripsApi.ts";
 import { calendarApiKey } from "../calendar/calendarApi.ts";
-import { createFakeCalendarApi, type FakeCalendarApi } from "../test/fakeCalendarApi.ts";
+import {
+  aConnection,
+  createFakeCalendarApi,
+  type FakeCalendarApi,
+} from "../test/fakeCalendarApi.ts";
 import { proposalsApiKey } from "../proposals/proposalsApi.ts";
 import { buttonByText, fieldByLabel } from "../test/dom.ts";
 import type { Trip } from "../trips/trip.ts";
@@ -801,7 +805,7 @@ describe("a meal's time", () => {
 
   test("a new time for a decided meal is written to its calendar event", async () => {
     const calendar = createFakeCalendarApi({
-      connection: { holderId: "kenji", holderIsMe: false, holderName: "Kenji", ready: true },
+      connection: aConnection(),
       meals: [{ mealId: "dinner", status: "synced", error: null }],
     });
     const api = tokyoDinner(calendar);
@@ -825,7 +829,7 @@ describe("a meal's time", () => {
 });
 
 describe("a decided meal and the trip's calendar", () => {
-  const kenji = { holderId: "kenji", holderIsMe: false, holderName: "Kenji", ready: true };
+  const kenji = aConnection();
 
   function decidable(calendar: FakeCalendarApi) {
     const api = createFakeMealsApi({
@@ -883,5 +887,83 @@ describe("a decided meal and the trip's calendar", () => {
     expect(panel(wrapper).get('[role="alert"]').text()).toBe(
       "Not on the calendar: Couldn't write the event: Google answered 403 (Forbidden)",
     );
+  });
+});
+
+describe("a trip whose calendar stopped updating (#13)", () => {
+  function dinnerOnKenjisCalendar(calendar: FakeCalendarApi) {
+    const api = createFakeMealsApi({
+      meals: [aMeal({ id: "dinner", tripId: "tokyo", date: "2026-10-01", slot: "dinner" })],
+    });
+    const proposals = createFakeProposalsApi({
+      proposals: [aProposal({ id: "afuri", mealId: "dinner", placeName: "Afuri" })],
+    });
+    proposals.decideAs("dinner", "afuri", { id: "kenji", name: "Kenji" });
+    return mountGrid(tokyo, api, proposals, calendar);
+  }
+
+  test("says so at the top of the trip, before the days, not only in the calendar card", async () => {
+    const calendar = createFakeCalendarApi({
+      connection: aConnection({ lapse: "revoked" }),
+      meals: [{ mealId: "dinner", status: "synced", error: null }],
+    });
+    const wrapper = await dinnerOnKenjisCalendar(calendar);
+
+    const alert = wrapper.get('[role="alert"]');
+    expect(alert.text()).toContain("The trip calendar has stopped updating");
+    expect(alert.text()).toContain("Kenji's Google Calendar access was removed");
+    const tablist = wrapper.get('[role="tablist"]').element;
+    expect(
+      alert.element.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test("is found out as the trip opens, even with nothing waiting to be written", async () => {
+    const calendar = createFakeCalendarApi({
+      connection: aConnection(),
+      meals: [{ mealId: "dinner", status: "synced", error: null }],
+    });
+    calendar.lapseOnNextWrite("revoked");
+
+    const wrapper = await dinnerOnKenjisCalendar(calendar);
+
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      "The trip calendar has stopped updating",
+    );
+  });
+
+  test("lets any member take the calendar over from there", async () => {
+    const calendar = createFakeCalendarApi({ connection: aConnection({ lapse: "holder_left" }) });
+    const wrapper = await dinnerOnKenjisCalendar(calendar);
+
+    expect(wrapper.get('[role="alert"]').text()).toContain("Kenji left the trip");
+    await buttonByText(wrapper, "Take over the calendar").trigger("click");
+    await flushPromises();
+
+    expect(calendar.startedConnecting).toEqual([{ tripId: "tokyo", replacing: "kenji-tokyo" }]);
+  });
+
+  test("tells each decided meal it will not follow later changes", async () => {
+    const calendar = createFakeCalendarApi({
+      connection: aConnection({ lapse: "revoked" }),
+      meals: [{ mealId: "dinner", status: "synced", error: null }],
+    });
+    const wrapper = await dinnerOnKenjisCalendar(calendar);
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    expect(panel(wrapper).text()).toContain(
+      "On Kenji's trip calendar, but that calendar has stopped updating: a later change won't reach it.",
+    );
+  });
+
+  test("writes nothing while it stays stopped", async () => {
+    const calendar = createFakeCalendarApi({
+      connection: aConnection({ lapse: "revoked" }),
+      meals: [{ mealId: "dinner", status: "pending", error: null }],
+    });
+    await dinnerOnKenjisCalendar(calendar);
+
+    expect(calendar.syncs("tokyo")).toBe(0);
   });
 });

@@ -2,7 +2,7 @@ import { FunctionsHttpError, type SupabaseClient } from "@supabase/supabase-js";
 import { inject, type InjectionKey } from "vue";
 import type { Database } from "../types/database.ts";
 import { consentUrl } from "./calendarConnect.ts";
-import type { SyncResult, TripCalendarStatus } from "./calendarStatus.ts";
+import type { LapseReason, SyncResult, TripCalendarStatus } from "./calendarStatus.ts";
 
 /**
  * A trip's calendar (#12): what the trip screen reads, and the calendar Edge
@@ -19,15 +19,21 @@ export interface CalendarApi {
    * and whether its events invite me.
    */
   getStatus(tripId: string): Promise<TripCalendarStatus>;
-  /** Sends the member to Google to allow the trip calendar. Leaves the page. */
-  startConnecting(tripId: string): Promise<void>;
+  /**
+   * Sends the member to Google to allow the trip calendar. Leaves the page.
+   * `replacing` is the calendar they mean to take over (#13), as they saw it,
+   * or null to connect the trip's first.
+   */
+  startConnecting(tripId: string, replacing: string | null): Promise<void>;
   /**
    * Finishes connecting with Google's answer: makes the trip calendar on the
-   * member's account and writes every decision waiting for one.
+   * member's account and writes every decision waiting for one. Replacing
+   * the trip's calendar is a takeover: every decided meal is written again,
+   * to the new one.
    */
   connect(
     tripId: string,
-    returned: { code: string; codeVerifier: string; redirectUri: string },
+    returned: { code: string; codeVerifier: string; redirectUri: string; replacing: string | null },
   ): Promise<SyncResult>;
   /** Writes whatever the trip's calendar is waiting for. */
   sync(tripId: string): Promise<SyncResult>;
@@ -36,6 +42,11 @@ export interface CalendarApi {
    * trip's events to be rewritten; writing them is sync()'s.
    */
   setAttending(tripId: string, attending: boolean): Promise<void>;
+  /**
+   * After a takeover (#13): the old calendar has been deleted, so the note
+   * asking for it goes. For the new holder and the previous one.
+   */
+  forgetPreviousCalendar(tripId: string): Promise<void>;
 }
 
 export const calendarApiKey: InjectionKey<CalendarApi> = Symbol("CalendarApi");
@@ -47,6 +58,13 @@ export function useCalendarApi(): CalendarApi {
 }
 
 type Client = SupabaseClient<Database>;
+
+const LAPSE_REASONS: readonly LapseReason[] = ["revoked", "calendar_gone", "holder_left"];
+
+/** The grant's lapse_reason, which the database constrains to these. */
+function lapseReason(value: string | null): LapseReason | null {
+  return LAPSE_REASONS.find((r) => r === value) ?? null;
+}
 
 /** The Edge Function's own message for a refusal, rather than "non-2xx status". */
 async function functionError(error: unknown): Promise<Error> {
@@ -84,7 +102,7 @@ export function createSupabaseCalendarApi(
       const [grants, events, optOut] = await Promise.all([
         client
           .from("calendar_grants")
-          .select("holder_id, calendar_id")
+          .select("holder_id, calendar_id, lapse_reason, previous_holder_id")
           .eq("trip_id", tripId)
           .maybeSingle(),
         client.from("calendar_events").select("meal_id, status, error").eq("trip_id", tripId),
@@ -102,17 +120,25 @@ export function createSupabaseCalendarApi(
 
       let connection: TripCalendarStatus["connection"] = null;
       if (grants.data) {
-        const { data: profile, error } = await client
+        const grant = grants.data;
+        const previousId = grant.previous_holder_id;
+        const ids = previousId ? [grant.holder_id, previousId] : [grant.holder_id];
+        const { data: profiles, error } = await client
           .from("profiles")
-          .select("display_name")
-          .eq("id", grants.data.holder_id)
-          .maybeSingle();
+          .select("id, display_name")
+          .in("id", ids);
         if (error) throw error;
+        const nameOf = (id: string) => profiles.find((p) => p.id === id)?.display_name ?? null;
         connection = {
-          holderId: grants.data.holder_id,
-          holderIsMe: grants.data.holder_id === me,
-          holderName: profile?.display_name ?? null,
-          ready: grants.data.calendar_id !== null,
+          holderId: grant.holder_id,
+          holderIsMe: grant.holder_id === me,
+          holderName: nameOf(grant.holder_id),
+          ready: grant.calendar_id !== null,
+          calendarId: grant.calendar_id,
+          lapse: lapseReason(grant.lapse_reason),
+          previousHolder: previousId
+            ? { id: previousId, isMe: previousId === me, name: nameOf(previousId) }
+            : null,
         };
       }
       return {
@@ -122,13 +148,15 @@ export function createSupabaseCalendarApi(
       };
     },
 
-    async startConnecting(tripId) {
+    async startConnecting(tripId, replacing) {
       if (!config.clientId) {
         throw new Error("Calendar isn't set up for this app yet (no Google client).");
       }
       // Back to this very address, like signing in; registered with Google.
       const redirectUri = window.location.origin + window.location.pathname;
-      window.location.assign(await consentUrl({ clientId: config.clientId, tripId, redirectUri }));
+      window.location.assign(
+        await consentUrl({ clientId: config.clientId, tripId, redirectUri, replacing }),
+      );
     },
 
     connect(tripId, returned) {
@@ -145,6 +173,11 @@ export function createSupabaseCalendarApi(
         : await client
             .from("calendar_opt_outs")
             .upsert({ trip_id: tripId }, { onConflict: "trip_id,user_id", ignoreDuplicates: true });
+      if (error) throw error;
+    },
+
+    async forgetPreviousCalendar(tripId) {
+      const { error } = await client.rpc("forget_previous_calendar", { trip_id: tripId });
       if (error) throw error;
     },
   };

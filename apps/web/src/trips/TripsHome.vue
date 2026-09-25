@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useCalendarApi } from "../calendar/calendarApi.ts";
 import { pendingCalendarReturn } from "../calendar/calendarConnect.ts";
+import { createTripCalendar } from "../calendar/useTripCalendar.ts";
 import TripGrid from "../grid/TripGrid.vue";
 import { errorMessage } from "../lib/errors.ts";
 import BaseButton from "../ui/BaseButton.vue";
@@ -27,6 +29,14 @@ const failure = ref<string | null>(null);
 const mode = ref<"view" | "create" | "edit">("view");
 
 const selected = computed(() => trips.value.find((t) => t.id === selectedId.value));
+
+// #12, #13: the selected trip's calendar, one per trip, shared by the grid
+// (its card, alert and meals) and the people card (what leaving or removing
+// its holder does). Follows the trip id only, not edits to the trip.
+const calendarApi = useCalendarApi();
+const tripCalendar = computed(() =>
+  selectedId.value ? createTripCalendar(calendarApi, selectedId.value) : null,
+);
 
 async function load() {
   loading.value = true;
@@ -137,12 +147,18 @@ function formatDate(date: string): string {
     </BaseCard>
 
     <!-- The trip grid (#7): the trip's days and their meals. -->
-    <TripGrid v-if="selected" :key="selected.id" :trip="selected" />
-    <!-- #6: who is in the trip, invitations, leaving and handing over. -->
-    <TripPeople
-      v-if="selected"
+    <TripGrid
+      v-if="selected && tripCalendar"
       :key="selected.id"
       :trip="selected"
+      :calendar="tripCalendar"
+    />
+    <!-- #6: who is in the trip, invitations, leaving and handing over. -->
+    <TripPeople
+      v-if="selected && tripCalendar"
+      :key="selected.id"
+      :trip="selected"
+      :calendar="tripCalendar"
       @left="onDeleted"
       @changed="onSaved"
     />

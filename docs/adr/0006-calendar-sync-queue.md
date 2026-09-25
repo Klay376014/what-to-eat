@@ -66,8 +66,10 @@ See `supabase/migrations/20260929090000_calendar.sql` and
 - A change made by a member who closes the tab before the call lands stays
   queued, and is shown as "not on the calendar yet", until anyone opens the
   trip. This is the gap a scheduled sweep would close.
-- Handover to a new holder and a lapsed refresh token are #13's. Until then, a
-  lapsed token marks every waiting meal as failed with Google's message.
+- Handover to a new holder and a lapsed refresh token are #13's: see
+  [ADR 0008](0008-calendar-handover.md). A dead connection is recorded on the
+  grant rather than on each meal, and a takeover re-queues every decided meal
+  through this same queue.
 - A member who opts out (#14, `public.calendar_opt_outs`, per member per
   trip, readable and changeable by that member alone) is left out by
   `calendar_attendees()`. Opting out or back in queues the trip's meals like

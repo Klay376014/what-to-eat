@@ -12,6 +12,12 @@
  * Each member also chooses here whether the trip's events invite them
  * (#14): a guest's email address is shown to every other guest. Turning it
  * off or on rewrites the events already on the calendar.
+ *
+ * Any member but its holder can take the calendar over (#13), onto a new
+ * calendar of their own. While it works that takes a confirmation, since
+ * everyone is invited again from the new one; once it has stopped
+ * updating, the alert at the top of the trip (CalendarAlert.vue) offers it.
+ * After a takeover this says whose old calendar to have deleted.
  */
 import { computed, onMounted, ref, useId, watch } from "vue";
 import type { Trip } from "../trips/trip.ts";
@@ -19,8 +25,14 @@ import BaseButton from "../ui/BaseButton.vue";
 import BaseCard from "../ui/BaseCard.vue";
 import BaseIcon from "../ui/BaseIcon.vue";
 import CheckboxField from "../ui/CheckboxField.vue";
+import ConfirmDialog from "../ui/ConfirmDialog.vue";
 import { clearCalendarReturn, pendingCalendarReturn } from "./calendarConnect.ts";
-import { CALENDAR_GUEST_LABEL, calendarWaiting, holderLabel } from "./calendarStatus.ts";
+import {
+  CALENDAR_GUEST_LABEL,
+  calendarWaiting,
+  handoverNote,
+  holderLabel,
+} from "./calendarStatus.ts";
 import { useTripCalendar } from "./useTripCalendar.ts";
 
 const props = defineProps<{ trip: Pick<Trip, "id" | "name"> }>();
@@ -35,6 +47,18 @@ const starting = ref(false);
 
 const connection = computed(() => status.value?.connection ?? null);
 const waiting = computed(() => calendarWaiting(status.value?.meals ?? []));
+const note = computed(() => handoverNote(connection.value, props.trip.name));
+const confirmingTakeOver = ref(false);
+const forgetting = ref(false);
+
+async function forgetPrevious() {
+  forgetting.value = true;
+  try {
+    await calendar.forgetPreviousCalendar();
+  } finally {
+    forgetting.value = false;
+  }
+}
 
 // Shown as changed at once, and put back if the change could not be saved.
 const attending = ref(true);
@@ -81,13 +105,14 @@ onMounted(async () => {
   }
 
   await calendar.refresh();
-  // Meals left waiting, say by a tab closed before it wrote them.
-  if (connection.value?.ready && waiting.value.pending + waiting.value.failed > 0) {
-    await calendar.sync();
-  }
+  // Writes meals left waiting, say by a tab closed before it wrote them. Run
+  // with nothing waiting too: asking Google for a token is how a connection
+  // that died since the last change is found (#13), before anyone trusts it.
+  if (connection.value?.ready && !connection.value.lapse) await calendar.sync();
 });
 
 async function connect() {
+  confirmingTakeOver.value = false;
   starting.value = true;
   returnFailure.value = null;
   try {
@@ -135,7 +160,22 @@ async function connect() {
         Decided meals go on the “{{ trip.name }}” calendar on {{ holderLabel(connection) }} Google
         account, and everyone in the trip is invited as a guest, unless they choose not to be.
       </p>
-      <p v-if="busy" class="muted">Writing to the calendar…</p>
+      <p v-if="note" class="handover">
+        {{ note.text }}
+        <BaseButton
+          v-if="note.canDismiss"
+          variant="quiet"
+          :disabled="forgetting"
+          @click="forgetPrevious"
+        >
+          It's deleted
+        </BaseButton>
+      </p>
+      <!-- Said loudly at the top of the trip (CalendarAlert.vue); here, only what it means. -->
+      <p v-if="connection.lapse" class="waiting">
+        Decided meals aren't reaching this calendar any more: it has stopped updating.
+      </p>
+      <p v-else-if="busy" class="muted">Writing to the calendar…</p>
       <template v-else>
         <p v-if="waiting.pending > 0" class="waiting">
           {{ meals(waiting.pending) }} {{ waiting.pending === 1 ? "isn't" : "aren't" }} on the
@@ -149,7 +189,30 @@ async function connect() {
           <BaseButton @click="calendar.sync()">Try again</BaseButton>
         </div>
       </template>
+      <div v-if="connection.ready && !connection.lapse && !connection.holderIsMe">
+        <BaseButton variant="quiet" :disabled="starting || busy" @click="confirmingTakeOver = true">
+          Take over the calendar
+        </BaseButton>
+      </div>
     </template>
+
+    <ConfirmDialog
+      :open="confirmingTakeOver && connection !== null"
+      title="Take over the trip calendar?"
+      confirm-label="Continue to Google"
+      :busy="starting"
+      @confirm="connect"
+      @cancel="confirmingTakeOver = false"
+    >
+      <p>
+        The app makes a new “{{ trip.name }}” calendar on your Google account and invites everyone
+        to the decided meals again from it.
+      </p>
+      <p v-if="connection">
+        {{ connection.holderName ?? "The current holder" }}'s calendar stops being updated: ask them
+        to delete it, or everyone sees each meal twice.
+      </p>
+    </ConfirmDialog>
 
     <CheckboxField
       v-if="status"
@@ -172,5 +235,12 @@ async function connect() {
 
 .waiting {
   font-weight: var(--strong-weight);
+}
+
+.handover {
+  padding: var(--space-3);
+  background: var(--warning-bg);
+  border: var(--border-width) solid var(--warning-border);
+  border-radius: var(--radius-card);
 }
 </style>

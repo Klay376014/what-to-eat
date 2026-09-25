@@ -7,7 +7,10 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, ref } from "vue";
 import { describe, expect, test } from "vite-plus/test";
+import type { CalendarConnection } from "../calendar/calendarStatus.ts";
 import { membershipApiKey, type MembershipApi } from "../invitations/membershipApi.ts";
+import { createTripCalendar } from "../calendar/useTripCalendar.ts";
+import { aConnection, createFakeCalendarApi } from "../test/fakeCalendarApi.ts";
 import { buttonByText } from "../test/dom.ts";
 import { createFakeMembership, type FakePerson } from "../test/fakeMembershipApi.ts";
 import { aTrip } from "../test/fakeTripsApi.ts";
@@ -28,6 +31,8 @@ async function show(options: {
   people?: { person: FakePerson; role: TripRole }[];
   /** Makes loading the member list fail, as a dropped connection would. */
   membersFail?: boolean;
+  /** The trip's calendar (#13); none by default. */
+  calendar?: CalendarConnection | null;
 }) {
   const people = options.people ?? [
     { person: alice, role: "organiser" },
@@ -38,11 +43,23 @@ async function show(options: {
     me: options.me,
     members: { tokyo: people.map(({ person, role }) => ({ ...person, role })) },
   });
+  // The trip's calendar, shared with the grid in TripsHome.
+  const calendar = createTripCalendar(
+    createFakeCalendarApi({
+      me: { id: options.me.userId, name: options.me.name },
+      connection: options.calendar ?? null,
+    }),
+    "tokyo",
+  );
   // Passes the trip back after a hand-over, as TripsHome does.
   const Parent = defineComponent(() => {
     const trip = ref(tokyo(options.myRole));
     return () =>
-      h(TripPeople, { trip: trip.value, onChanged: (next: Trip) => (trip.value = next) });
+      h(TripPeople, {
+        trip: trip.value,
+        calendar,
+        onChanged: (next: Trip) => (trip.value = next),
+      });
   });
   const api: MembershipApi = options.membersFail
     ? { ...fake.api, listMembers: async () => Promise.reject(new Error("Network down")) }
@@ -200,5 +217,56 @@ describe("the organiser trying to leave", () => {
     await buttonByText(wrapper, "Leave trip").trigger("click");
 
     expect(wrapper.get('[role="alert"]').text()).toContain("delete it");
+  });
+});
+
+describe("membership changes and the trip's calendar (#13)", () => {
+  const heldBy = (person: FakePerson, me: FakePerson) =>
+    aConnection({
+      holderId: person.userId,
+      holderIsMe: person.userId === me.userId,
+      holderName: person.name,
+    });
+
+  test("a member holding the calendar is told, before leaving, that it will stop updating", async () => {
+    const wrapper = await show({ me: bob, myRole: "member", calendar: heldBy(bob, bob) });
+
+    await buttonByText(wrapper, "Leave trip").trigger("click");
+    await flushPromises();
+
+    expect(dialog(wrapper).text()).toContain(
+      "You hold the trip calendar. Once you leave, decided meals stop going on it until someone else in the trip takes it over. You can delete the “Tokyo” calendar from your Google Calendar afterwards.",
+    );
+  });
+
+  test("a member not holding it is not told about the calendar", async () => {
+    const wrapper = await show({ me: bob, myRole: "member", calendar: heldBy(alice, bob) });
+
+    await buttonByText(wrapper, "Leave trip").trigger("click");
+    await flushPromises();
+
+    expect(dialog(wrapper).text()).not.toContain("calendar");
+  });
+
+  test("the organiser removing the holder is told what it does to the calendar", async () => {
+    const wrapper = await show({ me: alice, myRole: "organiser", calendar: heldBy(dave, alice) });
+
+    await buttonByText(wrapper, "Remove Dave Ho").trigger("click");
+    await flushPromises();
+
+    expect(dialog(wrapper).text()).toContain(
+      "Dave Ho holds the trip calendar. Removing them stops decided meals going on it until someone else in the trip takes it over.",
+    );
+  });
+
+  test("the organiser handing over the role is told the calendar stays theirs", async () => {
+    const wrapper = await show({ me: alice, myRole: "organiser", calendar: heldBy(alice, alice) });
+
+    await buttonByText(wrapper, "Make organiser: Bob Lin").trigger("click");
+    await flushPromises();
+
+    expect(dialog(wrapper).text()).toContain(
+      "You still hold the trip calendar: decided meals keep going on your Google account. Bob Lin can take it over from the Calendar card if you'd rather.",
+    );
   });
 });

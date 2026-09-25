@@ -98,6 +98,19 @@ describe("a decided meal's calendar event", () => {
     // Google's event ids allow only a–v and 0–9.
     expect(event.id).toMatch(/^[a-v0-9]{5,1024}$/);
   });
+
+  it("has an id of its own on a calendar taken over, never the old calendar's", () => {
+    const event = calendarEvent({
+      trip,
+      meal: dinner,
+      proposal: ichiran,
+      attendees: [],
+      eventSuffix: "9f3a0c7b21",
+    });
+    expect(event.id).toBe("0b6f1c2e8d3a4f5b9c7d1e2f3a4b5c6d9f3a0c7b21");
+    expect(eventIdFor(dinner.id, "9f3a0c7b21")).toBe(event.id);
+    expect(event.id).toMatch(/^[a-v0-9]{5,1024}$/);
+  });
 });
 
 describe("a timezone as the event text names it", () => {

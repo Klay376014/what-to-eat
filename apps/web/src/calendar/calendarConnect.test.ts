@@ -68,6 +68,22 @@ describe("coming back from Google", () => {
     expect(window.location.search).toBe("");
   });
 
+  test("for a first calendar, replacing none", async () => {
+    const params = await startConnecting();
+    openAt(`/?state=${params.get("state")}&code=c`);
+    captureCalendarReturn();
+    expect(pendingCalendarReturn()).toMatchObject({ tripId: trip, replacing: null });
+  });
+
+  test("for a takeover, naming the calendar the member saw and means to replace", async () => {
+    const url = new URL(
+      await consentUrl({ clientId: "c", tripId: trip, redirectUri, replacing: "old-calendar" }),
+    );
+    openAt(`/?state=${url.searchParams.get("state")}&code=c`);
+    captureCalendarReturn();
+    expect(pendingCalendarReturn()).toMatchObject({ tripId: trip, replacing: "old-calendar" });
+  });
+
   test("with a verifier that matches the challenge Google was shown", async () => {
     const params = await startConnecting();
     openAt(`/?state=${params.get("state")}&code=c`);

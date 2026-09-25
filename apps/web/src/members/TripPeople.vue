@@ -5,8 +5,16 @@
  *
  * The buttons shown follow the caller's role for convenience only; each
  * action is enforced by the database function behind it.
+ *
+ * The trip's calendar lives on one member's Google account (#12), whatever
+ * their role. So leaving, removing its holder, or handing over the organiser
+ * role says what happens to it (#13): the calendar stops updating when its
+ * holder goes, and stays with them when they only stop being organiser. The
+ * calendar is the trip's one, shared with the grid, so removing its holder
+ * shows the grid's alert straight away.
  */
 import { computed, onMounted, ref, useId } from "vue";
+import type { TripCalendar } from "../calendar/useTripCalendar.ts";
 import InviteLinks from "../invitations/InviteLinks.vue";
 import { MEMBER_LIMIT } from "../invitations/invitation.ts";
 import { useMembershipApi, type Member } from "../invitations/membershipApi.ts";
@@ -18,7 +26,7 @@ import BaseIcon from "../ui/BaseIcon.vue";
 import ConfirmDialog from "../ui/ConfirmDialog.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 
-const props = defineProps<{ trip: Trip }>();
+const props = defineProps<{ trip: Trip; calendar: TripCalendar }>();
 const emit = defineEmits<{
   /** The caller is no longer in the trip. */
   left: [tripId: string];
@@ -27,6 +35,8 @@ const emit = defineEmits<{
 }>();
 
 const api = useMembershipApi();
+/** Who holds the trip's calendar, if anyone; only to explain what an action does to it. */
+const calendar = computed(() => props.calendar.status.value?.connection ?? null);
 const headingId = useId();
 
 const members = ref<Member[]>([]);
@@ -64,10 +74,14 @@ async function load() {
 
 onMounted(load);
 
+const iHoldCalendar = computed(() => calendar.value?.holderIsMe ?? false);
+
 function ask(next: Pending) {
   actionFailure.value = null;
   mustTransfer.value = false;
   pending.value = next;
+  // What the dialog says about the calendar is as of now, not as of the page load.
+  void props.calendar.refresh();
 }
 
 function pressLeave() {
@@ -89,7 +103,8 @@ async function confirm() {
     if (action.kind === "remove") {
       await api.removeMember(props.trip.id, action.member.userId);
       pending.value = null;
-      await load();
+      // Removing the calendar's holder stops the calendar: the grid says so.
+      await Promise.all([load(), props.calendar.refresh()]);
     } else if (action.kind === "transfer") {
       await api.transferOrganiser(props.trip.id, action.member.userId);
       pending.value = null;
@@ -116,6 +131,10 @@ const dialog = computed(() => {
     return {
       title: `Remove ${name} from the trip?`,
       body: `${name} loses access straight away. Anything they proposed or voted on stays. To come back they will need a new invitation link.`,
+      calendarNote:
+        calendar.value?.holderId === action.member.userId
+          ? `${name} holds the trip calendar. Removing them stops decided meals going on it until someone else in the trip takes it over.`
+          : null,
       confirmLabel: "Remove",
       destructive: true,
     };
@@ -125,6 +144,9 @@ const dialog = computed(() => {
     return {
       title: `Make ${name} the organiser?`,
       body: `${name} will be able to change the trip, invite people and remove them. You will become an ordinary member, and can then leave if you want to.`,
+      calendarNote: iHoldCalendar.value
+        ? `You still hold the trip calendar: decided meals keep going on your Google account. ${name} can take it over from the Calendar card if you'd rather.`
+        : null,
       confirmLabel: "Make organiser",
       destructive: false,
     };
@@ -132,6 +154,9 @@ const dialog = computed(() => {
   return {
     title: `Leave “${props.trip.name}”?`,
     body: "You lose access to the trip straight away. Anything you proposed or voted on stays. To come back you will need a new invitation link.",
+    calendarNote: iHoldCalendar.value
+      ? `You hold the trip calendar. Once you leave, decided meals stop going on it until someone else in the trip takes it over. You can delete the “${props.trip.name}” calendar from your Google Calendar afterwards.`
+      : null,
     confirmLabel: "Leave trip",
     destructive: true,
   };
@@ -149,6 +174,7 @@ const dialog = computed(() => {
     @cancel="pending = null"
   >
     <p>{{ dialog?.body }}</p>
+    <p v-if="dialog?.calendarNote">{{ dialog.calendarNote }}</p>
     <p v-if="actionFailure" role="alert" class="error">{{ actionFailure }}</p>
   </ConfirmDialog>
 

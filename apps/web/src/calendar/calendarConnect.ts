@@ -26,11 +26,23 @@ interface PendingConnect {
   state: string;
   codeVerifier: string;
   redirectUri: string;
+  /** The calendar a takeover replaces (#13); absent or null for a first one. */
+  replacing?: string | null;
 }
 
-/** What came back from Google: a code to redeem, or why there is none. */
+/**
+ * What came back from Google: a code to redeem, or why there is none. With a
+ * code comes the calendar the member meant to replace, if any, so that the
+ * Edge Function takes over only what they saw.
+ */
 export type CalendarReturn =
-  | { tripId: string; code: string; codeVerifier: string; redirectUri: string }
+  | {
+      tripId: string;
+      code: string;
+      codeVerifier: string;
+      redirectUri: string;
+      replacing: string | null;
+    }
   | { tripId: string | null; error: string };
 
 let held: CalendarReturn | null = null;
@@ -59,7 +71,7 @@ function random(bytes: number): string {
  * which trip it is for and how to prove the code is this tab's.
  */
 export async function consentUrl(
-  input: { clientId: string; tripId: string; redirectUri: string },
+  input: { clientId: string; tripId: string; redirectUri: string; replacing?: string | null },
   win: Window = window,
 ): Promise<string> {
   const codeVerifier = random(32);
@@ -71,6 +83,7 @@ export async function consentUrl(
     state,
     codeVerifier,
     redirectUri: input.redirectUri,
+    replacing: input.replacing ?? null,
   };
   storage(win)?.setItem(KEY, JSON.stringify(pending));
 
@@ -132,6 +145,7 @@ export function captureCalendarReturn(win: Window = window): void {
       code,
       codeVerifier: pending.codeVerifier,
       redirectUri: pending.redirectUri,
+      replacing: pending.replacing ?? null,
     };
   } else {
     held = {

@@ -27,7 +27,9 @@ Only the member who chooses to connect a calendar is asked for this permission. 
 
 The app cannot see, read or change any of your other calendars or events.
 
-To keep the connection working, the app stores a Google refresh token on its server. That token is never sent to anyone's browser.
+To keep the connection working, the app stores a Google refresh token on its server. That token is never sent to anyone's browser. The app deletes it when Google stops accepting it, when you leave the trip, and when another member takes the trip calendar over.
+
+Other members of the trip can see whether the trip calendar is working and whose Google account it is on. If it stops working, any member can take it over: the app then makes a new calendar on their account, and the old one stays on yours until you delete it.
 
 ## How your information is used
 
@@ -55,7 +57,7 @@ The app's use of information received from Google APIs complies with the [Google
 
 ## Keeping and deleting your data
 
-- **Leaving a trip.** You stop receiving its email and are removed from future calendar events. Proposals and votes you made stay in the trip's history, so the group can still see why a meal was decided.
+- **Leaving a trip.** You stop receiving its email and are removed from future calendar events. If you held the trip calendar, the app stops writing to it and deletes its token; the calendar itself stays on your Google account until you delete it. Proposals and votes you made stay in the trip's history, so the group can still see why a meal was decided.
 - **Deleting your data.** To have your account and personal data deleted, open an issue at the link below. We will delete it within 30 days. Restaurants you proposed, and meals you decided, stay in the trip without your name; your votes are deleted.
 - **Revoking Google access.** You can revoke the app's access to your Google account at any time at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Calendars the app created stay on your account, and you can delete them yourself in Google Calendar.
 

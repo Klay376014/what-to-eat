@@ -4,6 +4,7 @@
 
 import { withBackoff } from "../../../apps/web/src/calendar/backoff.ts";
 import type { CalendarEvent } from "../../../apps/web/src/calendar/calendarEvent.ts";
+import { CALENDAR_GONE } from "../../../apps/web/src/calendar/calendarLapse.ts";
 
 // The scope the app asks for, and so the one a connection must have been granted.
 export { CALENDAR_SCOPE } from "../../../apps/web/src/calendar/scope.ts";
@@ -16,19 +17,27 @@ export interface ClientCredentials {
   clientSecret: string;
 }
 
-/** Google refused, with the status and Google's own reason when it gave one. */
+/**
+ * Google refused, with the status, Google's own reason when it gave one, and
+ * whether the OAuth token endpoint or the Calendar API said it.
+ */
 export class GoogleError extends Error {
   constructor(
     readonly status: number,
     message: string,
     readonly reason: string | null = null,
+    readonly from: "token" | "calendar" = "calendar",
   ) {
     super(message);
     this.name = "GoogleError";
   }
 }
 
-async function googleError(res: Response, what: string): Promise<GoogleError> {
+async function googleError(
+  res: Response,
+  what: string,
+  from: "token" | "calendar" = "calendar",
+): Promise<GoogleError> {
   let detail: string | null = null;
   let reason: string | null = null;
   try {
@@ -50,6 +59,7 @@ async function googleError(res: Response, what: string): Promise<GoogleError> {
     res.status,
     `${what}: Google answered ${res.status}${detail ? ` (${detail})` : ""}`,
     reason,
+    from,
   );
 }
 
@@ -67,7 +77,7 @@ async function tokenRequest(
       ...params,
     }),
   });
-  if (!res.ok) throw await googleError(res, what);
+  if (!res.ok) throw await googleError(res, what, "token");
   return (await res.json()) as Record<string, unknown>;
 }
 
@@ -126,6 +136,14 @@ export class Calendar {
     return ((await res.json()) as { id: string }).id;
   }
 
+  /** Whether the calendar is still there, for a holder connecting again (#13). */
+  async calendarExists(calendarId: string): Promise<boolean> {
+    const res = await this.request("GET", `/calendars/${encodeURIComponent(calendarId)}`);
+    if (res.status === 404) return false;
+    if (!res.ok) throw await googleError(res, "Couldn't find the trip calendar");
+    return true;
+  }
+
   /** Deletes a calendar the app made. */
   async deleteCalendar(calendarId: string): Promise<void> {
     const res = await this.request("DELETE", `/calendars/${encodeURIComponent(calendarId)}`);
@@ -148,6 +166,14 @@ export class Calendar {
     let res = await update();
     if (res.status === 404) {
       res = await this.request("POST", `${events}?sendUpdates=all`, event);
+      // Inserting can only miss the calendar itself: it was deleted (#13).
+      if (res.status === 404) {
+        throw new GoogleError(
+          404,
+          "Couldn't write the event: the trip calendar was deleted",
+          CALENDAR_GONE,
+        );
+      }
       // Made meanwhile by another pass: update that one.
       if (res.status === 409) res = await update();
     }

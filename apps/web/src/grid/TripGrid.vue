@@ -6,9 +6,14 @@
  * `?day=`, so a link can open a given day.
  */
 import { computed, onMounted, provide, ref, useId } from "vue";
+import CalendarAlert from "../calendar/CalendarAlert.vue";
 import { useCalendarApi } from "../calendar/calendarApi.ts";
 import TripCalendar from "../calendar/TripCalendar.vue";
-import { createTripCalendar, tripCalendarKey } from "../calendar/useTripCalendar.ts";
+import {
+  createTripCalendar,
+  tripCalendarKey,
+  type TripCalendar as TripCalendarState,
+} from "../calendar/useTripCalendar.ts";
 import { errorMessage } from "../lib/errors.ts";
 import { dateIn, type IsoDate, type Trip } from "../trips/trip.ts";
 import BaseButton from "../ui/BaseButton.vue";
@@ -21,12 +26,16 @@ import type { Meal } from "./meal.ts";
 import { SlotTakenError, useMealsApi } from "./mealsApi.ts";
 import { dayTabs, dayTrail, defaultDay, tripDates } from "./tripDays.ts";
 
-const props = defineProps<{ trip: Trip }>();
+const props = defineProps<{
+  trip: Trip;
+  /** The trip's calendar, when the page shares it with others; else the grid makes its own. */
+  calendar?: TripCalendarState;
+}>();
 
 const api = useMealsApi();
 // #12: the trip's calendar, shared by its card and every meal's details. The
 // grid is keyed on the trip, so this is the one trip's for the grid's life.
-const calendar = createTripCalendar(useCalendarApi(), props.trip.id);
+const calendar = props.calendar ?? createTripCalendar(useCalendarApi(), props.trip.id);
 provide(tripCalendarKey, calendar);
 const id = useId();
 const tabIdPrefix = `${id}-day`;
@@ -150,6 +159,9 @@ const add: AddMeal = async (meal) => {
 
 <template>
   <section class="grid stack" aria-label="Meals">
+    <!-- #13: a calendar that stopped updating is said first, not in its card below. -->
+    <CalendarAlert />
+
     <BaseCard v-if="loading"><p class="muted">Loading the meals…</p></BaseCard>
 
     <BaseCard v-else-if="failure">

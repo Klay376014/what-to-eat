@@ -2,12 +2,20 @@
 // public.calendar_events is written to, or deleted from, the trip calendar,
 // and the outcome recorded against the revision claimed. See
 // supabase/migrations/20260929090000_calendar.sql.
+//
+// A refusal that means the connection is dead (#13: a revoked or expired
+// token, a deleted calendar) is recorded on the grant with lapse_calendar,
+// and the pass stops: every member then sees the calendar has stopped
+// updating, until someone takes it over. See
+// supabase/migrations/20261001090000_calendar_handover.sql.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarEvent, eventIdFor } from "../../../apps/web/src/calendar/calendarEvent.ts";
+import { lapseFrom } from "../../../apps/web/src/calendar/calendarLapse.ts";
+import type { LapseReason } from "../../../apps/web/src/calendar/calendarStatus.ts";
 import type { SyncResult } from "../../../apps/web/src/calendar/calendarStatus.ts";
 import type { Database } from "../../../apps/web/src/types/database.ts";
-import { accessToken, Calendar, type ClientCredentials } from "./google.ts";
+import { accessToken, Calendar, GoogleError, type ClientCredentials } from "./google.ts";
 
 type Admin = SupabaseClient<Database>;
 type Claimed = Database["public"]["Functions"]["claim_calendar_events"]["Returns"][number];
@@ -25,6 +33,30 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** The lapse a failure means, if it is Google saying the connection is dead. */
+function lapseOf(error: unknown): LapseReason | null {
+  return error instanceof GoogleError ? lapseFrom(error) : null;
+}
+
+/**
+ * Records the lapse against the calendar and token this pass used, so a
+ * pass that outlived its token does not undo a reconnection made meanwhile.
+ */
+async function lapse(
+  admin: Admin,
+  tripId: string,
+  used: { calendarId: string; refreshToken: string },
+  reason: LapseReason,
+): Promise<void> {
+  const { error } = await admin.rpc("lapse_calendar", {
+    trip_id: tripId,
+    calendar_id: used.calendarId,
+    refresh_token: used.refreshToken,
+    reason,
+  });
+  if (error) throw error;
 }
 
 async function claim(admin: Admin, tripId: string): Promise<Claimed[]> {
@@ -56,12 +88,16 @@ export async function syncTrip(
 ): Promise<SyncResult> {
   const { data: grant, error: grantError } = await admin
     .from("calendar_grants")
-    .select("holder_id, refresh_token, calendar_id")
+    .select("refresh_token, calendar_id, event_suffix, lapsed_at")
     .eq("trip_id", tripId)
     .maybeSingle();
   if (grantError) throw grantError;
   if (!grant?.calendar_id) return { connected: false, written: 0, failed: 0 };
   const calendarId = grant.calendar_id;
+  const eventSuffix = grant.event_suffix;
+  // Stopped: the meals wait, and the trip says so, until someone takes over.
+  if (grant.lapsed_at || !grant.refresh_token) return { connected: true, written: 0, failed: 0 };
+  const refreshToken = grant.refresh_token;
 
   const { data: trip, error: tripError } = await admin
     .from("trips")
@@ -74,10 +110,16 @@ export async function syncTrip(
 
   let calendar: Calendar;
   try {
-    calendar = new Calendar(await accessToken(grant.refresh_token, creds));
+    calendar = new Calendar(await accessToken(refreshToken, creds));
   } catch (error) {
-    // Nothing can be written. Say so on every waiting meal, rather than
-    // leave them looking as if they were on their way (#13 recovers).
+    // Google dropped the token: the whole calendar has stopped, not a meal.
+    const reason = lapseOf(error);
+    if (reason) {
+      await lapse(admin, tripId, { calendarId, refreshToken }, reason);
+      return result;
+    }
+    // Nothing can be written just now. Say so on every waiting meal, rather
+    // than leave them looking as if they were on their way.
     for (const row of await claim(admin, tripId)) {
       await finish(admin, row, { eventId: null, calendarId: null, error: message(error) });
       result.failed++;
@@ -105,13 +147,16 @@ export async function syncTrip(
     }
     if (fresh.length === 0) break;
 
-    for (const row of fresh) {
+    for (const [index, row] of fresh.entries()) {
       try {
         if (row.place_name === null) {
           // The decision was cleared: its event goes. Deleted by the id the
           // meal fixes, not the one recorded: a write whose finish lost to
           // this very change made the event without recording it.
-          await calendar.deleteEvent(calendarId, row.event_id ?? eventIdFor(row.meal_id));
+          await calendar.deleteEvent(
+            calendarId,
+            row.event_id ?? eventIdFor(row.meal_id, eventSuffix),
+          );
           await finish(admin, row, { eventId: null, calendarId: null, error: null });
         } else {
           const event = calendarEvent({
@@ -131,12 +176,28 @@ export async function syncTrip(
               lng: row.lng,
             },
             attendees,
+            eventSuffix,
           });
           const eventId = await calendar.putEvent(calendarId, event);
           await finish(admin, row, { eventId, calendarId, error: null });
         }
         result.written++;
       } catch (error) {
+        const reason = lapseOf(error);
+        if (reason) {
+          // Nothing more can be written: stop, and let go of every meal
+          // claimed, which waits for whoever takes the calendar over.
+          await lapse(admin, tripId, { calendarId, refreshToken }, reason);
+          for (const rest of fresh.slice(index)) {
+            await finish(admin, rest, {
+              eventId: rest.event_id,
+              calendarId,
+              error: message(error),
+            });
+            result.failed++;
+          }
+          return result;
+        }
         failedAt.set(row.meal_id, { revision: row.revision, error: message(error) });
         await finish(admin, row, { eventId: row.event_id, calendarId, error: message(error) });
         result.failed++;

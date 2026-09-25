@@ -27,9 +27,14 @@ export interface CalendarEvent {
  * chosen by the client (base32hex: a–v and 0–9, which a uuid's hex digits
  * are), so a write retried after a lost response finds the event it already
  * made instead of adding a second one.
+ *
+ * A calendar taken over from another holder (#13) appends its own suffix
+ * (calendar_grants.event_suffix, hex): each attendee's copy of an event
+ * keeps the id it was sent with, so the new calendar's events do not reuse
+ * the old one's. The first calendar a trip had before #13 has none.
  */
-export function eventIdFor(mealId: string): string {
-  return mealId.replaceAll("-", "").toLowerCase();
+export function eventIdFor(mealId: string, eventSuffix = ""): string {
+  return mealId.replaceAll("-", "").toLowerCase() + eventSuffix;
 }
 
 /** "Tokyo" for Asia/Tokyo: how the event text names the trip's zone. */
@@ -50,6 +55,8 @@ export function calendarEvent(input: {
   proposal: EventPlace;
   /** Email addresses to invite. */
   attendees: readonly string[];
+  /** The trip calendar's event id suffix; see eventIdFor. */
+  eventSuffix?: string;
 }): CalendarEvent {
   const { trip, meal, proposal } = input;
   const { start, end, localStart } = mealTimes(meal, trip.timezone);
@@ -65,7 +72,7 @@ export function calendarEvent(input: {
   ].join("\n");
 
   return {
-    id: eventIdFor(meal.id),
+    id: eventIdFor(meal.id, input.eventSuffix),
     summary: `${name} · ${proposal.placeName} (${localStart} ${city})`,
     description,
     location: link,

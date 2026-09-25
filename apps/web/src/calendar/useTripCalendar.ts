@@ -19,12 +19,17 @@ export interface TripCalendar {
   refresh(): Promise<void>;
   /**
    * After a change the calendar must follow (the database has queued it):
-   * write it now when the trip has a calendar, and show where it stands.
+   * write it now when the trip has a working calendar, and show where it
+   * stands.
    */
   followChange(): Promise<void>;
   /** Writes everything waiting, failed meals included. */
   sync(): Promise<void>;
-  /** Sends the member to Google to allow the trip calendar. Leaves the page. */
+  /**
+   * Sends the member to Google to allow the trip calendar. Leaves the page.
+   * With a calendar already connected, this is taking it over (#13), or its
+   * holder connecting again: the calendar shown now is the one it replaces.
+   */
   startConnecting(): Promise<void>;
   /** Finishes connecting with Google's answer; null when it failed. */
   connect(returned: Extract<CalendarReturn, { code: string }>): Promise<SyncResult | null>;
@@ -34,6 +39,11 @@ export interface TripCalendar {
    * already on the calendar. False when the setting could not be changed.
    */
   setAttending(attending: boolean): Promise<boolean>;
+  /**
+   * After a takeover (#13), says the old calendar has been deleted, so the
+   * note asking for it goes. False when that could not be saved.
+   */
+  forgetPreviousCalendar(): Promise<boolean>;
 }
 
 export const tripCalendarKey: InjectionKey<TripCalendar> = Symbol("TripCalendar");
@@ -88,9 +98,15 @@ export function createTripCalendar(api: CalendarApi, tripId: string): TripCalend
     return running;
   }
 
+  /** A calendar being written to: connected, and not stopped (#13). */
+  function working(): boolean {
+    const connection = status.value?.connection;
+    return Boolean(connection?.ready && !connection.lapse);
+  }
+
   async function followChange() {
     await refresh();
-    if (status.value?.connection?.ready) await sync();
+    if (working()) await sync();
   }
 
   return {
@@ -113,7 +129,18 @@ export function createTripCalendar(api: CalendarApi, tripId: string): TripCalend
       return true;
     },
     startConnecting() {
-      return api.startConnecting(tripId);
+      return api.startConnecting(tripId, status.value?.connection?.calendarId ?? null);
+    },
+    async forgetPreviousCalendar() {
+      failure.value = null;
+      try {
+        await api.forgetPreviousCalendar(tripId);
+      } catch (error) {
+        failure.value = `Couldn't save that: ${errorMessage(error)}`;
+        return false;
+      }
+      await refresh();
+      return true;
     },
     async connect(returned) {
       busy.value = true;
@@ -123,6 +150,7 @@ export function createTripCalendar(api: CalendarApi, tripId: string): TripCalend
           code: returned.code,
           codeVerifier: returned.codeVerifier,
           redirectUri: returned.redirectUri,
+          replacing: returned.replacing,
         });
         return result;
       } catch (error) {

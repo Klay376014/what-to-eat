@@ -5,10 +5,14 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { calendarApiKey } from "../calendar/calendarApi.ts";
-import { createFakeCalendarApi } from "../test/fakeCalendarApi.ts";
+import {
+  aConnection,
+  createFakeCalendarApi,
+  type FakeCalendarApi,
+} from "../test/fakeCalendarApi.ts";
 import { mealsApiKey } from "../grid/mealsApi.ts";
 import { createFakeMealsApi } from "../test/fakeMealsApi.ts";
-import { membershipApiKey } from "../invitations/membershipApi.ts";
+import { membershipApiKey, type MembershipApi } from "../invitations/membershipApi.ts";
 import { createFakeMembership } from "../test/fakeMembershipApi.ts";
 import { aTrip, createFakeTripsApi } from "../test/fakeTripsApi.ts";
 import { buttonByText, fieldByLabel } from "../test/dom.ts";
@@ -26,17 +30,20 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-async function mountHome(api: TripsApi) {
+async function mountHome(
+  api: TripsApi,
+  more: { calendar?: FakeCalendarApi; membership?: MembershipApi } = {},
+) {
   const wrapper = mount(TripsHome, {
     global: {
       provide: {
         [tripsApiKey as symbol]: api,
         [mealsApiKey as symbol]: createFakeMealsApi(),
         // #12: the grid also shows the trip's calendar.
-        [calendarApiKey as symbol]: createFakeCalendarApi(),
+        [calendarApiKey as symbol]: more.calendar ?? createFakeCalendarApi(),
         // #6: the trip view also shows its members.
-        [membershipApiKey as symbol]: createFakeMembership({ me: { userId: "me", name: "Me" } })
-          .api,
+        [membershipApiKey as symbol]:
+          more.membership ?? createFakeMembership({ me: { userId: "me", name: "Me" } }).api,
       },
     },
     attachTo: document.body,
@@ -277,5 +284,43 @@ describe("deleting a trip", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("No trips yet");
+  });
+});
+
+describe("removing the member who holds the trip calendar (#13)", () => {
+  test("says at once, at the top of the trip, that the calendar has stopped updating", async () => {
+    const calendar = createFakeCalendarApi({
+      me: { id: "me", name: "Me" },
+      connection: aConnection({ holderId: "dave", holderName: "Dave Ho" }),
+    });
+    const people = createFakeMembership({
+      me: { userId: "me", name: "Me" },
+      members: {
+        tokyo: [
+          { userId: "me", name: "Me", role: "organiser" },
+          { userId: "dave", name: "Dave Ho", role: "member" },
+        ],
+      },
+    });
+    // The database's trigger: the holder leaving stops their calendar.
+    const membership: MembershipApi = {
+      ...people.api,
+      async removeMember(tripId, userId) {
+        await people.api.removeMember(tripId, userId);
+        calendar.memberLeft(userId);
+      },
+    };
+    const wrapper = await mountHome(
+      createFakeTripsApi({ trips: [{ ...tokyo, myRole: "organiser" }] }),
+      { calendar, membership },
+    );
+    expect(wrapper.text()).not.toContain("The trip calendar has stopped updating");
+
+    await buttonByText(wrapper, "Remove Dave Ho").trigger("click");
+    await flushPromises();
+    await buttonByText(wrapper.find('[role="alertdialog"]'), "Remove").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toContain("Dave Ho left the trip");
   });
 });

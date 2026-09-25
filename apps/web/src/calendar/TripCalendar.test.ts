@@ -4,14 +4,18 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { buttonByText, fieldByLabel } from "../test/dom.ts";
-import { createFakeCalendarApi, type FakeCalendarApi } from "../test/fakeCalendarApi.ts";
+import {
+  aConnection,
+  createFakeCalendarApi,
+  type FakeCalendarApi,
+} from "../test/fakeCalendarApi.ts";
 import { aTrip } from "../test/fakeTripsApi.ts";
 import { captureCalendarReturn, clearCalendarReturn, consentUrl } from "./calendarConnect.ts";
 import TripCalendar from "./TripCalendar.vue";
 import { createTripCalendar, tripCalendarKey } from "./useTripCalendar.ts";
 
 const tokyo = aTrip({ id: "tokyo", name: "Tokyo in October", timezone: "Asia/Tokyo" });
-const kenji = { holderId: "kenji", holderIsMe: false, holderName: "Kenji", ready: true };
+const kenji = aConnection();
 
 afterEach(() => {
   clearCalendarReturn();
@@ -28,10 +32,19 @@ async function mountCard(api: FakeCalendarApi) {
   return wrapper;
 }
 
+function hasButton(wrapper: Awaited<ReturnType<typeof mountCard>>, text: string): boolean {
+  return wrapper.findAll("button").some((b) => b.text().trim() === text);
+}
+
 /** Comes back from Google's consent screen, as the address would at startup. */
-async function returnFromGoogle(answer: "allowed" | "declined") {
+async function returnFromGoogle(answer: "allowed" | "declined", replacing: string | null = null) {
   const url = new URL(
-    await consentUrl({ clientId: "c", tripId: tokyo.id, redirectUri: "http://localhost/" }),
+    await consentUrl({
+      clientId: "c",
+      tripId: tokyo.id,
+      redirectUri: "http://localhost/",
+      replacing,
+    }),
   );
   const state = url.searchParams.get("state")!;
   history.replaceState(
@@ -57,7 +70,7 @@ describe("a trip with no calendar", () => {
     await buttonByText(wrapper, "Connect Google Calendar").trigger("click");
     await flushPromises();
 
-    expect(api.startedConnecting).toEqual(["tokyo"]);
+    expect(api.startedConnecting).toEqual([{ tripId: "tokyo", replacing: null }]);
   });
 
   test("does not warn about an unverified app, since Google shows none for this scope", async () => {
@@ -119,7 +132,7 @@ describe("a trip with a calendar", () => {
     expect(wrapper.text()).toContain(
       "Decided meals go on the “Tokyo in October” calendar on Kenji's Google account",
     );
-    expect(wrapper.find("button").exists()).toBe(false);
+    expect(hasButton(wrapper, "Connect Google Calendar")).toBe(false);
   });
 
   test("writes meals still waiting when the trip opens", async () => {
@@ -228,5 +241,129 @@ describe("being a guest on the trip's events (#14)", () => {
       "Couldn't change your calendar setting: Failed to fetch",
     );
     expect(fieldByLabel(wrapper, GUEST).element.checked).toBe(true);
+  });
+});
+
+describe("taking over the trip's calendar (#13)", () => {
+  function dialog(wrapper: Awaited<ReturnType<typeof mountCard>>) {
+    return wrapper.get('[role="alertdialog"]');
+  }
+
+  test("from a calendar that works, asks first and says what it means for everyone", async () => {
+    const api = createFakeCalendarApi({ connection: kenji });
+    const wrapper = await mountCard(api);
+
+    await buttonByText(wrapper, "Take over the calendar").trigger("click");
+    await flushPromises();
+    expect(dialog(wrapper).text()).toContain(
+      "The app makes a new “Tokyo in October” calendar on your Google account and invites everyone to the decided meals again from it.",
+    );
+    expect(dialog(wrapper).text()).toContain(
+      "Kenji's calendar stops being updated: ask them to delete it, or everyone sees each meal twice.",
+    );
+    expect(api.startedConnecting).toEqual([]);
+
+    await buttonByText(wrapper, "Continue to Google").trigger("click");
+    await flushPromises();
+    expect(api.startedConnecting).toEqual([{ tripId: "tokyo", replacing: "kenji-tokyo" }]);
+  });
+
+  test("is not offered to the holder, whose calendar it already is", async () => {
+    const wrapper = await mountCard(
+      createFakeCalendarApi({ connection: aConnection({ holderId: "me", holderIsMe: true }) }),
+    );
+    expect(hasButton(wrapper, "Take over the calendar")).toBe(false);
+  });
+
+  test("coming back, writes every decided meal to my new calendar and says whose old one to have deleted", async () => {
+    const api = createFakeCalendarApi({
+      connection: aConnection({ lapse: "revoked" }),
+      meals: [
+        { mealId: "dinner", status: "synced", error: null },
+        { mealId: "lunch", status: "pending", error: null },
+      ],
+    });
+    await returnFromGoogle("allowed", "kenji-tokyo");
+
+    const wrapper = await mountCard(api);
+
+    expect(wrapper.get('[role="status"]').text()).toBe(
+      "Connected. 2 decided meals are now on the calendar.",
+    );
+    expect(api.written()).toEqual(["dinner", "lunch"]);
+    expect(wrapper.text()).toContain(
+      "Decided meals go on the “Tokyo in October” calendar on your Google account",
+    );
+    expect(wrapper.text()).toContain(
+      "Ask Kenji to delete the old “Tokyo in October” calendar from their Google Calendar.",
+    );
+  });
+
+  test("the note about the old calendar goes once it is deleted", async () => {
+    const api = createFakeCalendarApi({
+      connection: aConnection({
+        holderId: "me",
+        holderIsMe: true,
+        holderName: "Mei Lin",
+        previousHolder: { id: "kenji", isMe: false, name: "Kenji" },
+      }),
+    });
+    const wrapper = await mountCard(api);
+    expect(wrapper.text()).toContain("Ask Kenji to delete the old");
+
+    await buttonByText(wrapper, "It's deleted").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain("Ask Kenji to delete the old");
+  });
+
+  test("the previous holder is asked to delete their old calendar", async () => {
+    const wrapper = await mountCard(
+      createFakeCalendarApi({
+        connection: aConnection({ previousHolder: { id: "me", isMe: true, name: "Mei Lin" } }),
+      }),
+    );
+    expect(wrapper.text()).toContain(
+      "Kenji has taken over the trip calendar. Delete your old “Tokyo in October” calendar from Google Calendar",
+    );
+    expect(buttonByText(wrapper, "It's deleted").exists()).toBe(true);
+  });
+
+  test("everyone else is told why meals may show twice", async () => {
+    const wrapper = await mountCard(
+      createFakeCalendarApi({
+        connection: aConnection({ previousHolder: { id: "aiko", isMe: false, name: "Aiko" } }),
+      }),
+    );
+    expect(wrapper.text()).toContain("Kenji took over the trip calendar from Aiko.");
+    expect(hasButton(wrapper, "It's deleted")).toBe(false);
+  });
+
+  test("says so when someone else took it over while I was at Google", async () => {
+    const api = createFakeCalendarApi({ connection: aConnection({ calendarId: "aiko-tokyo" }) });
+    await returnFromGoogle("allowed", "kenji-tokyo");
+
+    const wrapper = await mountCard(api);
+
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      "Couldn't connect the calendar: The trip calendar changed while you were at Google. Look at it again before taking over.",
+    );
+  });
+});
+
+describe("a trip calendar that stopped updating (#13)", () => {
+  test("does not say its meals are on their way, nor offer to retry them", async () => {
+    const api = createFakeCalendarApi({
+      connection: aConnection({ lapse: "revoked" }),
+      meals: [{ mealId: "dinner", status: "failed", error: "x" }],
+    });
+    const wrapper = await mountCard(api);
+
+    expect(wrapper.text()).toContain(
+      "Decided meals aren't reaching this calendar any more: it has stopped updating.",
+    );
+    expect(wrapper.text()).not.toContain("couldn't be written");
+    expect(hasButton(wrapper, "Try again")).toBe(false);
+    expect(api.syncs("tokyo")).toBe(0);
   });
 });

@@ -1,5 +1,6 @@
 import { formatDay } from "../grid/meal.ts";
 import { dateIn } from "../trips/trip.ts";
+import type { Vote } from "./vote.ts";
 
 /** Mirror the checks on public.proposals. */
 export const MAX_PLACE_NAME_LENGTH = 200;
@@ -24,8 +25,10 @@ export interface Proposal {
   proposerName: string | null;
   /** An instant (ISO 8601). */
   createdAt: string;
-  /** True once anyone has voted: the name can no longer change. */
+  /** True while anyone has a vote on it: the name can no longer change. */
   nameLocked: boolean;
+  /** Everyone's votes, a departed member's included, in no set order. */
+  votes: Vote[];
 }
 
 export interface NewProposal {

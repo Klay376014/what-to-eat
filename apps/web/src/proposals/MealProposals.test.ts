@@ -7,6 +7,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { buttonByText, fieldByLabel } from "../test/dom.ts";
 import {
   aProposal,
+  aVote,
   createFakeProposalsApi,
   type FakeProposalsApi,
 } from "../test/fakeProposalsApi.ts";
@@ -26,15 +27,17 @@ async function mountProposals(api: ProposalsApi = createFakeProposalsApi()) {
   return wrapper;
 }
 
-/** Each proposal as a person reads it, line by line, whitespace collapsed. */
+/**
+ * Each proposal as a person reads it, line by line, whitespace collapsed.
+ * Its votes are left out here and read through votesOn().
+ */
 function listed(wrapper: VueWrapper) {
-  return wrapper
-    .findAll("li")
-    .map((li) =>
-      [...li.element.children]
-        .map((line) => (line.textContent ?? "").replace(/\s+/g, " ").trim())
-        .join(" "),
-    );
+  return wrapper.findAll("li").map((li) =>
+    [...li.element.children]
+      .filter((line) => !line.classList.contains("votes"))
+      .map((line) => (line.textContent ?? "").replace(/\s+/g, " ").trim())
+      .join(" "),
+  );
 }
 
 function item(wrapper: VueWrapper, name: string) {
@@ -322,7 +325,10 @@ describe("editing your own proposal", () => {
     });
     const wrapper = await mountProposals(api);
 
-    expect(item(wrapper, "Tsuta").find("button").exists()).toBe(false);
+    const labels = item(wrapper, "Tsuta")
+      .findAll("button")
+      .map((b) => b.text());
+    expect(labels.some((l) => l.startsWith("Edit"))).toBe(false);
   });
 });
 
@@ -334,7 +340,7 @@ describe("once someone has voted", () => {
           mealId: MEAL,
           placeName: "Afuri Ramen Ebisu",
           proposedByMe: true,
-          nameLocked: true,
+          votes: [aVote({ voterId: "alice", voterName: "Alice Chen", value: 1 })],
           note: "Near the station",
         }),
       ],
@@ -364,7 +370,7 @@ describe("once someone has voted", () => {
 
     await buttonByText(wrapper, "Edit Afuri").trigger("click");
     await fieldByLabel(wrapper, "Restaurant name").setValue("Somewhere else");
-    api.vote(mine!.id);
+    api.castAs(mine!.id, { id: "alice", name: "Alice Chen" }, 1);
     await buttonByText(wrapper, "Save").trigger("click");
     await flushPromises();
 
@@ -373,5 +379,181 @@ describe("once someone has voted", () => {
     );
     expect(wrapper.findAll("label").map((l) => l.text())).not.toContain("Restaurant name");
     expect((await api.listProposals(MEAL))[0]!.placeName).toBe("Afuri");
+  });
+});
+
+describe("voting", () => {
+  /**
+   * A proposal's tally, line by line, as a screen reader reads it: the
+   * voters' faces are decorative, and their names are written out.
+   */
+  function tallyOf(wrapper: VueWrapper, name: string) {
+    return item(wrapper, name)
+      .findAll(".tally > *")
+      .map((line) => {
+        const read = line.element.cloneNode(true) as Element;
+        read.querySelectorAll('[aria-hidden="true"]').forEach((hidden) => hidden.remove());
+        return (read.textContent ?? "").replace(/\s+/g, " ").trim();
+      });
+  }
+
+  function voteButton(wrapper: VueWrapper, name: string, label: "+1" | "−1") {
+    return buttonByText(item(wrapper, name), `${label} ${name}`);
+  }
+
+  function hasNotVotedOn(wrapper: VueWrapper, name: string) {
+    return item(wrapper, name).find(".unvoted").exists();
+  }
+
+  async function press(wrapper: VueWrapper, name: string, label: "+1" | "−1") {
+    await voteButton(wrapper, name, label).trigger("click");
+    await flushPromises();
+  }
+
+  function withAfuri(votes = [] as Parameters<typeof aVote>[0][]) {
+    return createFakeProposalsApi({
+      proposals: [aProposal({ mealId: MEAL, placeName: "Afuri", votes: votes.map(aVote) })],
+    });
+  }
+
+  test("a proposal nobody has voted on says so, and marks that you have not voted", async () => {
+    const wrapper = await mountProposals(withAfuri());
+
+    expect(tallyOf(wrapper, "Afuri")).toEqual(["No votes yet."]);
+    expect(hasNotVotedOn(wrapper, "Afuri")).toBe(true);
+    expect(voteButton(wrapper, "Afuri", "+1").attributes("aria-pressed")).toBe("false");
+    expect(voteButton(wrapper, "Afuri", "−1").attributes("aria-pressed")).toBe("false");
+  });
+
+  test("+1 counts you for it, and shows your vote pressed", async () => {
+    const api = withAfuri();
+    const wrapper = await mountProposals(api);
+
+    await press(wrapper, "Afuri", "+1");
+
+    expect(tallyOf(wrapper, "Afuri")).toEqual(["1 for: you"]);
+    expect(voteButton(wrapper, "Afuri", "+1").attributes("aria-pressed")).toBe("true");
+    expect(voteButton(wrapper, "Afuri", "−1").attributes("aria-pressed")).toBe("false");
+    expect(hasNotVotedOn(wrapper, "Afuri")).toBe(false);
+    expect((await api.listProposals(MEAL))[0]!.votes.map((v) => v.value)).toEqual([1]);
+  });
+
+  test("−1 after +1 changes your vote rather than adding a second", async () => {
+    const api = withAfuri();
+    const wrapper = await mountProposals(api);
+
+    await press(wrapper, "Afuri", "+1");
+    await press(wrapper, "Afuri", "−1");
+
+    expect(tallyOf(wrapper, "Afuri")).toEqual(["1 against: you"]);
+    expect(voteButton(wrapper, "Afuri", "+1").attributes("aria-pressed")).toBe("false");
+    expect(voteButton(wrapper, "Afuri", "−1").attributes("aria-pressed")).toBe("true");
+    expect((await api.listProposals(MEAL))[0]!.votes).toHaveLength(1);
+  });
+
+  test("pressing your vote again withdraws it, back to no opinion", async () => {
+    const api = withAfuri();
+    const wrapper = await mountProposals(api);
+
+    await press(wrapper, "Afuri", "−1");
+    await press(wrapper, "Afuri", "−1");
+
+    expect(tallyOf(wrapper, "Afuri")).toEqual(["No votes yet."]);
+    expect(voteButton(wrapper, "Afuri", "−1").attributes("aria-pressed")).toBe("false");
+    expect(hasNotVotedOn(wrapper, "Afuri")).toBe(true);
+    expect((await api.listProposals(MEAL))[0]!.votes).toEqual([]);
+  });
+
+  test("shows who voted which way, a departed member's vote included", async () => {
+    const wrapper = await mountProposals(
+      withAfuri([
+        { voterId: "bob", voterName: "Bob Lin", value: -1 },
+        { voterId: "dave", voterName: "Dave Ho", value: 1 },
+        { voterId: "alice", voterName: "Alice Chen", value: 1 },
+      ]),
+    );
+
+    expect(tallyOf(wrapper, "Afuri")).toEqual(["2 for: Alice Chen, Dave Ho", "1 against: Bob Lin"]);
+    expect(hasNotVotedOn(wrapper, "Afuri")).toBe(true);
+  });
+
+  test("your vote joins the others, and you are named first", async () => {
+    const wrapper = await mountProposals(
+      withAfuri([{ voterId: "alice", voterName: "Alice Chen", value: 1 }]),
+    );
+
+    await press(wrapper, "Afuri", "+1");
+
+    expect(tallyOf(wrapper, "Afuri")).toEqual(["2 for: you, Alice Chen"]);
+  });
+
+  test("says at a glance how many proposals you have not voted on", async () => {
+    const api = createFakeProposalsApi({
+      proposals: [
+        aProposal({ mealId: MEAL, placeName: "Afuri" }),
+        aProposal({ mealId: MEAL, placeName: "Tsuta" }),
+      ],
+    });
+    const wrapper = await mountProposals(api);
+    const summary = () => wrapper.get(".vote-summary").text();
+
+    expect(summary()).toBe("You haven't voted on 2 of 2 proposals.");
+
+    await press(wrapper, "Afuri", "+1");
+    expect(summary()).toBe("You haven't voted on 1 of 2 proposals.");
+    expect(hasNotVotedOn(wrapper, "Afuri")).toBe(false);
+    expect(hasNotVotedOn(wrapper, "Tsuta")).toBe(true);
+
+    await press(wrapper, "Tsuta", "−1");
+    expect(summary()).toBe("You've voted on every proposal.");
+  });
+
+  test("a new proposal counts as one you have not voted on yet", async () => {
+    const wrapper = await mountProposals();
+
+    await propose(wrapper, { name: "Afuri" });
+
+    expect(wrapper.get(".vote-summary").text()).toBe("You haven't voted on 1 of 1 proposal.");
+  });
+
+  test("a failed vote says why and leaves the tally as it was", async () => {
+    const api = withAfuri([{ voterId: "alice", voterName: "Alice Chen", value: 1 }]);
+    api.vote = async () => {
+      throw new Error("network down");
+    };
+    const wrapper = await mountProposals(api);
+
+    await press(wrapper, "Afuri", "+1");
+
+    expect(item(wrapper, "Afuri").get('[role="alert"]').text()).toBe(
+      "Couldn't save your vote: network down",
+    );
+    expect(tallyOf(wrapper, "Afuri")).toEqual(["1 for: Alice Chen"]);
+    expect(voteButton(wrapper, "Afuri", "+1").attributes("aria-pressed")).toBe("false");
+  });
+
+  test("votes that landed meanwhile show up when you vote", async () => {
+    const api = withAfuri();
+    const wrapper = await mountProposals(api);
+    const [afuri] = await api.listProposals(MEAL);
+
+    api.castAs(afuri!.id, { id: "bob", name: "Bob Lin" }, -1);
+    await press(wrapper, "Afuri", "+1");
+
+    expect(tallyOf(wrapper, "Afuri")).toEqual(["1 for: you", "1 against: Bob Lin"]);
+  });
+
+  test("voting on your own proposal locks its name, and withdrawing the last vote unlocks it", async () => {
+    const wrapper = await mountProposals();
+    await propose(wrapper, { name: "Afuri" });
+
+    await press(wrapper, "Afuri", "+1");
+    await buttonByText(wrapper, "Edit Afuri").trigger("click");
+    expect(wrapper.findAll("label").map((l) => l.text())).not.toContain("Restaurant name");
+    await buttonByText(wrapper, "Cancel").trigger("click");
+
+    await press(wrapper, "Afuri", "+1");
+    await buttonByText(wrapper, "Edit Afuri").trigger("click");
+    expect(wrapper.findAll("label").map((l) => l.text())).toContain("Restaurant name");
   });
 });

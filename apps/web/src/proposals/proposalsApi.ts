@@ -2,16 +2,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { inject, type InjectionKey } from "vue";
 import type { Database } from "../types/database.ts";
 import type { NewProposal, Proposal, ProposalEdit } from "./proposal.ts";
+import type { Vote, VoteValue } from "./vote.ts";
 
 /**
  * A meal's proposals: what the meal's details read and write. A separate
  * seam from MealsApi, faked the same way in component tests
  * (src/test/fakeProposalsApi.ts).
  *
- * Who may read, propose and edit, that nobody deletes, and that a voted-on
- * name stays put are all decided by the database
- * (supabase/migrations/20260926090000_proposals.sql) and tested there,
- * never checked here.
+ * Who may read, propose, edit and vote, that nobody deletes, and that a
+ * voted-on name stays put are all decided by the database
+ * (supabase/migrations/20260926090000_proposals.sql and
+ * 20260927090000_votes.sql) and tested there, never checked here.
  */
 export interface ProposalsApi {
   /** The meal's proposals, oldest first. */
@@ -23,6 +24,13 @@ export interface ProposalsApi {
    * changed after someone voted.
    */
   editProposal(proposalId: string, edit: ProposalEdit): Promise<Proposal>;
+  /**
+   * Casts the signed-in member's vote, or changes it; returns the proposal
+   * with its votes and name lock as they now stand.
+   */
+  vote(proposalId: string, value: VoteValue): Promise<Proposal>;
+  /** Withdraws the signed-in member's vote, back to no opinion. */
+  withdrawVote(proposalId: string): Promise<Proposal>;
 }
 
 /** Someone voted on the proposal, so its name can no longer change. */
@@ -42,7 +50,8 @@ export function useProposalsApi(): ProposalsApi {
 }
 
 type Client = SupabaseClient<Database>;
-type ProposalRow = Pick<
+type VoteRow = Pick<Database["public"]["Tables"]["votes"]["Row"], "voter_id" | "value">;
+type ProposalRow = { votes: VoteRow[] } & Pick<
   Database["public"]["Tables"]["proposals"]["Row"],
   | "id"
   | "meal_id"
@@ -56,8 +65,9 @@ type ProposalRow = Pick<
   | "name_locked_at"
 >;
 
+// Each proposal with its votes, embedded through votes.proposal_id.
 const PROPOSAL_COLUMNS =
-  "id, meal_id, place_name, source_url, note, lat, lng, proposed_by, created_at, name_locked_at";
+  "id, meal_id, place_name, source_url, note, lat, lng, proposed_by, created_at, name_locked_at, votes(voter_id, value)";
 
 export function createSupabaseProposalsApi(client: Client): ProposalsApi {
   async function currentUserId(): Promise<string> {
@@ -67,19 +77,38 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
     return data.session.user.id;
   }
 
-  /** The rows as proposals, with each proposer's name from their profile. */
-  async function withProposers(rows: ProposalRow[]): Promise<Proposal[]> {
+  /**
+   * The rows as proposals, with each proposer's and voter's name (and each
+   * voter's picture) from their profile. A departed member's profile is still
+   * readable (profiles_select), so their votes stay attributed.
+   */
+  async function withPeople(rows: ProposalRow[]): Promise<Proposal[]> {
     const me = await currentUserId();
-    const ids = [...new Set(rows.flatMap((r) => (r.proposed_by ? [r.proposed_by] : [])))];
-    const names = new Map<string, string | null>();
+    const ids = [
+      ...new Set(
+        rows.flatMap((r) => [
+          ...(r.proposed_by ? [r.proposed_by] : []),
+          ...r.votes.map((v) => v.voter_id),
+        ]),
+      ),
+    ];
+    const profiles = new Map<string, { name: string | null; avatarUrl: string | null }>();
     if (ids.length > 0) {
       const { data, error } = await client
         .from("profiles")
-        .select("id, display_name")
+        .select("id, display_name, avatar_url")
         .in("id", ids);
       if (error) throw error;
-      for (const p of data) names.set(p.id, p.display_name);
+      for (const p of data) profiles.set(p.id, { name: p.display_name, avatarUrl: p.avatar_url });
     }
+    const toVote = (v: VoteRow): Vote => ({
+      voterId: v.voter_id,
+      voterName: profiles.get(v.voter_id)?.name ?? null,
+      voterAvatarUrl: profiles.get(v.voter_id)?.avatarUrl ?? null,
+      isMe: v.voter_id === me,
+      // The table's CHECK allows nothing else.
+      value: v.value === 1 ? 1 : -1,
+    });
     return rows.map((row) => ({
       id: row.id,
       mealId: row.meal_id,
@@ -90,10 +119,24 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
       lng: row.lng,
       proposedBy: row.proposed_by,
       proposedByMe: row.proposed_by === me,
-      proposerName: row.proposed_by ? (names.get(row.proposed_by) ?? null) : null,
+      proposerName: row.proposed_by ? (profiles.get(row.proposed_by)?.name ?? null) : null,
       createdAt: row.created_at,
       nameLocked: row.name_locked_at !== null,
+      votes: row.votes.map(toVote),
     }));
+  }
+
+  /** One proposal as it now stands, after a vote changed it. */
+  async function getProposal(proposalId: string): Promise<Proposal> {
+    const { data, error } = await client
+      .from("proposals")
+      .select(PROPOSAL_COLUMNS)
+      .eq("id", proposalId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("This proposal is no longer available.");
+    const [proposal] = await withPeople([data]);
+    return proposal!;
   }
 
   return {
@@ -105,7 +148,7 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
         .order("created_at", { ascending: true })
         .order("id", { ascending: true });
       if (error) throw error;
-      return withProposers(data);
+      return withPeople(data);
     },
 
     async propose(proposal) {
@@ -120,7 +163,7 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
         .select(PROPOSAL_COLUMNS)
         .single();
       if (error) throw error;
-      const [created] = await withProposers([data]);
+      const [created] = await withPeople([data]);
       return created!;
     },
 
@@ -140,8 +183,25 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
       if (error) throw error;
       const [row] = data;
       if (!row) throw new Error("This proposal can no longer be edited.");
-      const [edited] = await withProposers([row]);
+      const [edited] = await withPeople([row]);
       return edited!;
+    },
+
+    async vote(proposalId, value) {
+      const { error } = await client.rpc("cast_vote", { proposal_id: proposalId, value });
+      if (error) throw error;
+      return getProposal(proposalId);
+    },
+
+    async withdrawVote(proposalId) {
+      const me = await currentUserId();
+      const { error } = await client
+        .from("votes")
+        .delete()
+        .eq("proposal_id", proposalId)
+        .eq("voter_id", me);
+      if (error) throw error;
+      return getProposal(proposalId);
     },
   };
 }

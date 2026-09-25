@@ -5,12 +5,18 @@
  * name and note of their own; once anyone has voted, the name is read-only
  * and the form says why. Nothing offers deleting: proposals are never deleted.
  *
- * Which buttons appear is for convenience only. Who may propose and edit,
- * and the name lock, are enforced by the database
- * (supabase/migrations/20260926090000_proposals.sql).
+ * Each proposal also carries the votes on it (#10): +1 or −1, who voted
+ * which way, and a mark on the ones you have not voted on yet. Pressing your
+ * own vote again withdraws it; there is no abstain button, since no vote is
+ * no opinion.
+ *
+ * Which buttons appear is for convenience only. Who may propose, edit and
+ * vote, and the name lock, are enforced by the database
+ * (supabase/migrations/20260926090000_proposals.sql, 20260927090000_votes.sql).
  */
-import { nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { errorMessage } from "../lib/errors.ts";
+import MemberAvatar from "../members/MemberAvatar.vue";
 import BaseButton from "../ui/BaseButton.vue";
 import BaseIcon from "../ui/BaseIcon.vue";
 import TextAreaField from "../ui/TextAreaField.vue";
@@ -29,6 +35,7 @@ import {
   type Proposal,
 } from "./proposal.ts";
 import { NameLockedError, useProposalsApi } from "./proposalsApi.ts";
+import { myVote, tally, unvotedByMe, voterLabel, type Vote, type VoteValue } from "./vote.ts";
 
 const props = defineProps<{
   mealId: string;
@@ -195,6 +202,53 @@ async function submitEdit(proposal: Proposal) {
     busy.value = false;
   }
 }
+
+// Voting ----------------------------------------------------------------------
+
+const VOTE_CHOICES = [
+  { value: 1, label: "+1", side: "vote--up" },
+  { value: -1, label: "−1", side: "vote--down" },
+] as const satisfies readonly { value: VoteValue; label: string; side: string }[];
+
+/** The proposal whose vote is being saved; its buttons wait meanwhile. */
+const votingProposalId = ref<string | null>(null);
+const voteFailure = ref<{ proposalId: string; message: string } | null>(null);
+
+const voteSummary = computed(() => {
+  const total = proposals.value.length;
+  const unvoted = unvotedByMe(proposals.value);
+  if (unvoted === 0) return "You've voted on every proposal.";
+  return `You haven't voted on ${unvoted} of ${total} proposal${total === 1 ? "" : "s"}.`;
+});
+
+/** Who voted for and against, each side left out when nobody is on it. */
+function sides(proposal: Proposal): { word: string; votes: Vote[] }[] {
+  const { for: supporters, against } = tally(proposal.votes);
+  return [
+    { word: "for", votes: supporters },
+    { word: "against", votes: against },
+  ].filter((side) => side.votes.length > 0);
+}
+
+/** Votes one way, changes the vote, or withdraws it when it is already that way. */
+async function toggleVote(proposal: Proposal, value: VoteValue) {
+  votingProposalId.value = proposal.id;
+  voteFailure.value = null;
+  try {
+    replace(
+      myVote(proposal.votes) === value
+        ? await api.withdrawVote(proposal.id)
+        : await api.vote(proposal.id, value),
+    );
+  } catch (error) {
+    voteFailure.value = {
+      proposalId: proposal.id,
+      message: `Couldn't save your vote: ${errorMessage(error)}`,
+    };
+  } finally {
+    votingProposalId.value = null;
+  }
+}
 </script>
 
 <template>
@@ -213,7 +267,9 @@ async function submitEdit(proposal: Proposal) {
         Nobody has proposed a restaurant for {{ mealName.toLowerCase() }} yet.
       </p>
 
-      <ul v-else class="proposals">
+      <p v-else class="vote-summary">{{ voteSummary }}</p>
+
+      <ul v-if="proposals.length > 0" class="proposals">
         <li v-for="proposal in proposals" :key="proposal.id" class="proposal stack-sm">
           <p class="name">{{ proposal.placeName }}</p>
           <p class="byline">
@@ -223,6 +279,46 @@ async function submitEdit(proposal: Proposal) {
             }}</time>
           </p>
           <p v-if="proposal.note" class="note">{{ proposal.note }}</p>
+
+          <div class="votes stack-sm">
+            <div class="actions vote-actions">
+              <BaseButton
+                v-for="choice in VOTE_CHOICES"
+                :key="choice.value"
+                class="vote"
+                :class="choice.side"
+                :aria-pressed="String(myVote(proposal.votes) === choice.value)"
+                :disabled="votingProposalId === proposal.id"
+                @click="toggleVote(proposal, choice.value)"
+              >
+                {{ choice.label
+                }}<span class="visually-hidden">{{ ` ${proposal.placeName}` }}</span>
+              </BaseButton>
+              <span v-if="myVote(proposal.votes) === null" class="unvoted">You haven't voted</span>
+              <span v-else class="withdraw-hint">Press your vote again to take it back.</span>
+            </div>
+            <div class="tally">
+              <p v-if="proposal.votes.length === 0" class="muted">No votes yet.</p>
+              <p v-for="side in sides(proposal)" :key="side.word" class="tally-side">
+                <span class="faces" aria-hidden="true">
+                  <MemberAvatar
+                    v-for="vote in side.votes"
+                    :key="vote.voterId"
+                    :name="vote.voterName"
+                    :avatar-url="vote.voterAvatarUrl"
+                    :size="28"
+                  />
+                </span>
+                <span>
+                  {{ side.votes.length }} {{ side.word }}:
+                  {{ side.votes.map(voterLabel).join(", ") }}
+                </span>
+              </p>
+            </div>
+            <p v-if="voteFailure?.proposalId === proposal.id" role="alert" class="error">
+              {{ voteFailure.message }}
+            </p>
+          </div>
 
           <form
             v-if="editing === proposal.id"
@@ -371,6 +467,65 @@ async function submitEdit(proposal: Proposal) {
 
 .note {
   white-space: pre-line;
+}
+
+.vote-summary {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.vote-actions {
+  align-items: center;
+}
+
+/* Your vote is filled in its side's colour, and bold, so it reads as
+   chosen by more than colour alone. */
+.vote[aria-pressed="true"] {
+  font-weight: var(--strong-weight);
+}
+
+.vote--up[aria-pressed="true"] {
+  background: var(--up);
+  border-color: var(--up);
+  color: var(--on-up);
+}
+
+.vote--down[aria-pressed="true"] {
+  background: var(--down);
+  border-color: var(--down);
+  color: var(--on-down);
+}
+
+.withdraw-hint {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.unvoted {
+  font-size: var(--text-sm);
+  font-weight: var(--strong-weight);
+  color: var(--muted);
+}
+
+.tally {
+  font-size: var(--text-sm);
+}
+
+.tally-side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Faces overlap a little, like a stack of pins on the map. */
+.faces {
+  display: inline-flex;
+  flex: none;
+}
+
+.faces > * + * {
+  margin-left: calc(-1 * var(--space-2));
 }
 
 .proposal-actions {

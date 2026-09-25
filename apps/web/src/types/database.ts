@@ -214,11 +214,44 @@ export type Database = {
         };
         Relationships: [];
       };
+      votes: {
+        Row: {
+          created_at: string;
+          proposal_id: string;
+          value: number;
+          voter_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          proposal_id: string;
+          value: number;
+          voter_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          proposal_id?: string;
+          value?: number;
+          voter_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "votes_proposal_id_fkey";
+            columns: ["proposal_id"];
+            isOneToOne: false;
+            referencedRelation: "proposals";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      cast_vote: {
+        Args: { proposal_id: string; value: number };
+        Returns: undefined;
+      };
       create_invitation: {
         Args: { trip_id: string };
         Returns: {

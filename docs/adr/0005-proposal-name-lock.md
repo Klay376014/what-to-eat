@@ -1,6 +1,6 @@
 # A proposal's name locks through a marker that the votes set and clear
 
-Status: accepted (#8, for #10)
+Status: accepted (#8, for #10). #10 has done its part; see "Done in #10" below.
 
 ## Context
 
@@ -86,6 +86,24 @@ who deleted their account". The proposal itself stays. Its name, note and
 link describe a restaurant, not the person, and a decision may rest on it.
 This was also the maintainer's decision on #8, and `docs/privacy.md` says
 so.
+
+### Done in #10
+
+`supabase/migrations/20260927090000_votes.sql` adds `public.votes` and the
+two triggers. `votes_lock_name` runs after each insert and calls
+`private.lock_proposal_name()`. `votes_unlock_name` runs after each delete
+and calls `private.unlock_proposal_name()` once no vote on the proposal
+remains. Changing a vote's value is an update and fires neither.
+
+Both trigger functions first take the proposal's row lock (`FOR NO KEY
+UPDATE`), so votes on one proposal lock and unlock one at a time. Without
+it, a vote cast while the last other vote is withdrawn could leave the name
+unlocked with a vote on it, and two simultaneous withdrawals could leave it
+locked with none; both were reproduced with two sessions and are fixed by
+the lock. `votes_name_lock.test.sql` is the pgTAP test step 2 asks for.
+
+Deleting an account deletes its votes (docs/privacy.md keeps only the
+restaurants a person proposed), so it can unlock a name too.
 
 ## Consequences
 

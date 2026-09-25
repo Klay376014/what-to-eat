@@ -36,7 +36,8 @@ select function_privs_are(
   'authenticated can call revoke_invitation'
 );
 select function_privs_are(
-  'public', 'join_trip', array['text'], 'authenticated', array['EXECUTE'],
+  -- The boolean is the calendar choice made at joining (#14).
+  'public', 'join_trip', array['text', 'boolean'], 'authenticated', array['EXECUTE'],
   'authenticated can call join_trip'
 );
 select function_privs_are(

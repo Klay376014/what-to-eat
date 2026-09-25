@@ -94,6 +94,32 @@ export type Database = {
           },
         ];
       };
+      calendar_opt_outs: {
+        Row: {
+          created_at: string;
+          trip_id: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          trip_id: string;
+          user_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          trip_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "calendar_opt_outs_trip_id_user_id_fkey";
+            columns: ["trip_id", "user_id"];
+            isOneToOne: true;
+            referencedRelation: "trip_members";
+            referencedColumns: ["trip_id", "user_id"];
+          },
+        ];
+      };
       decisions: {
         Row: {
           decided_at: string;
@@ -445,7 +471,7 @@ export type Database = {
         };
       };
       join_trip: {
-        Args: { token: string };
+        Args: { calendar_attendee?: boolean; token: string };
         Returns: {
           joined: boolean;
           trip_id: string;

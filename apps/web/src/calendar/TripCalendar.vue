@@ -8,14 +8,19 @@
  * how many are not on it yet, and loudly when writing them failed. Coming
  * back from Google's consent screen lands here, where the connection is
  * finished and everything waiting is written in one pass.
+ *
+ * Each member also chooses here whether the trip's events invite them
+ * (#14): a guest's email address is shown to every other guest. Turning it
+ * off or on rewrites the events already on the calendar.
  */
-import { computed, onMounted, ref, useId } from "vue";
+import { computed, onMounted, ref, useId, watch } from "vue";
 import type { Trip } from "../trips/trip.ts";
 import BaseButton from "../ui/BaseButton.vue";
 import BaseCard from "../ui/BaseCard.vue";
 import BaseIcon from "../ui/BaseIcon.vue";
+import CheckboxField from "../ui/CheckboxField.vue";
 import { clearCalendarReturn, pendingCalendarReturn } from "./calendarConnect.ts";
-import { calendarWaiting, holderLabel } from "./calendarStatus.ts";
+import { CALENDAR_GUEST_LABEL, calendarWaiting, holderLabel } from "./calendarStatus.ts";
 import { useTripCalendar } from "./useTripCalendar.ts";
 
 const props = defineProps<{ trip: Pick<Trip, "id" | "name"> }>();
@@ -30,6 +35,28 @@ const starting = ref(false);
 
 const connection = computed(() => status.value?.connection ?? null);
 const waiting = computed(() => calendarWaiting(status.value?.meals ?? []));
+
+// Shown as changed at once, and put back if the change could not be saved.
+const attending = ref(true);
+const savingSetting = ref(false);
+watch(
+  () => status.value?.attending,
+  (value) => {
+    // Not while a change is saving: a refresh finishing meanwhile would flick it back.
+    if (value !== undefined && !savingSetting.value) attending.value = value;
+  },
+  { immediate: true },
+);
+
+async function changeAttending(value: boolean) {
+  attending.value = value;
+  savingSetting.value = true;
+  try {
+    if (!(await calendar.setAttending(value))) attending.value = !value;
+  } finally {
+    savingSetting.value = false;
+  }
+}
 
 function meals(n: number): string {
   return n === 1 ? "1 decided meal" : `${n} decided meals`;
@@ -106,7 +133,7 @@ async function connect() {
     <template v-else-if="connection">
       <p>
         Decided meals go on the “{{ trip.name }}” calendar on {{ holderLabel(connection) }} Google
-        account, and everyone in the trip is invited.
+        account, and everyone in the trip is invited as a guest, unless they choose not to be.
       </p>
       <p v-if="busy" class="muted">Writing to the calendar…</p>
       <template v-else>
@@ -123,6 +150,15 @@ async function connect() {
         </div>
       </template>
     </template>
+
+    <CheckboxField
+      v-if="status"
+      :model-value="attending"
+      :disabled="savingSetting"
+      :label="CALENDAR_GUEST_LABEL"
+      hint="Guests can see each other's email addresses. Without it, you still see every decided meal here and still get the trip's emails."
+      @update:model-value="changeAttending"
+    />
   </BaseCard>
 </template>
 

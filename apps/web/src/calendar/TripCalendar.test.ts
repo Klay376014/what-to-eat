@@ -3,7 +3,7 @@
 // database's and the Edge Function's (supabase/tests/database/calendar_*.sql).
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { buttonByText } from "../test/dom.ts";
+import { buttonByText, fieldByLabel } from "../test/dom.ts";
 import { createFakeCalendarApi, type FakeCalendarApi } from "../test/fakeCalendarApi.ts";
 import { aTrip } from "../test/fakeTripsApi.ts";
 import { captureCalendarReturn, clearCalendarReturn, consentUrl } from "./calendarConnect.ts";
@@ -163,5 +163,70 @@ describe("a trip with a calendar", () => {
       "Couldn't write to the calendar: Failed to fetch",
     );
     expect(wrapper.text()).toContain("1 decided meal isn't on the calendar yet.");
+  });
+});
+
+describe("being a guest on the trip's events (#14)", () => {
+  // Spelled out, not imported: the words are what the test checks.
+  const GUEST = "Add me as a guest on the trip's calendar events";
+
+  test("I am one unless I opted out, and the card says what that shows", async () => {
+    const wrapper = await mountCard(createFakeCalendarApi({ connection: kenji }));
+
+    expect(fieldByLabel(wrapper, GUEST).element.checked).toBe(true);
+    expect(wrapper.text()).toContain("Guests can see each other's email addresses.");
+  });
+
+  test("turning it off takes me off the events already on the calendar", async () => {
+    const api = createFakeCalendarApi({
+      connection: kenji,
+      meals: [{ mealId: "dinner", status: "synced", error: null }],
+    });
+    const wrapper = await mountCard(api);
+
+    await fieldByLabel(wrapper, GUEST).setValue(false);
+    await flushPromises();
+
+    expect(api.attending()).toBe(false);
+    // Rewritten through the queue, straight away.
+    expect(api.written()).toEqual(["dinner"]);
+    expect(fieldByLabel(wrapper, GUEST).element.checked).toBe(false);
+  });
+
+  test("I can turn it back on at any time", async () => {
+    const api = createFakeCalendarApi({ connection: kenji, attending: false });
+    const wrapper = await mountCard(api);
+
+    expect(fieldByLabel(wrapper, GUEST).element.checked).toBe(false);
+    await fieldByLabel(wrapper, GUEST).setValue(true);
+    await flushPromises();
+
+    expect(api.attending()).toBe(true);
+    expect(fieldByLabel(wrapper, GUEST).element.checked).toBe(true);
+  });
+
+  test("can be set before the trip has a calendar", async () => {
+    const api = createFakeCalendarApi();
+    const wrapper = await mountCard(api);
+
+    await fieldByLabel(wrapper, GUEST).setValue(false);
+    await flushPromises();
+
+    expect(api.attending()).toBe(false);
+    expect(api.syncs("tokyo")).toBe(0);
+  });
+
+  test("says so when the change could not be saved, and shows the setting as it is", async () => {
+    const api = createFakeCalendarApi({ connection: kenji });
+    const wrapper = await mountCard(api);
+    api.failSettings("Failed to fetch");
+
+    await fieldByLabel(wrapper, GUEST).setValue(false);
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      "Couldn't change your calendar setting: Failed to fetch",
+    );
+    expect(fieldByLabel(wrapper, GUEST).element.checked).toBe(true);
   });
 });

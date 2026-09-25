@@ -15,6 +15,12 @@ export interface FakeCalendarApi extends CalendarApi {
   failWrites(message: string | null): void;
   /** Makes the next call to the Edge Function itself fail. */
   failCalls(message: string | null): void;
+  /** Whether I am a guest on the trip's events (#14). */
+  attending(): boolean;
+  /** Every meal whose event was written, in order, since the fake was made. */
+  written(): string[];
+  /** Makes the next change to my guest setting fail. */
+  failSettings(message: string | null): void;
 }
 
 /**
@@ -22,7 +28,8 @@ export interface FakeCalendarApi extends CalendarApi {
  * calendar table and Edge Function, not a record of calls. Like them, it
  * keeps a queued meal waiting until a calendar is connected, writes every
  * waiting meal when asked, and drops a cleared meal once its event is gone.
- * It serves one trip.
+ * Changing my guest setting queues every meal with an event, as the
+ * database's trigger does. It serves one trip.
  *
  * It knows nothing about who may connect or see a calendar; that is the
  * database's and the Edge Function's, tested there.
@@ -32,6 +39,8 @@ export function createFakeCalendarApi(
     me?: { id: string; name: string | null };
     connection?: CalendarConnection | null;
     meals?: MealSync[];
+    /** False when I opted out of being a guest; true by default. */
+    attending?: boolean;
   } = {},
 ): FakeCalendarApi {
   const me = options.me ?? { id: "me", name: "Mei Lin" };
@@ -42,6 +51,9 @@ export function createFakeCalendarApi(
   const syncCount = new Map<string, number>();
   let writeFailure: string | null = null;
   let callFailure: string | null = null;
+  let attending = options.attending ?? true;
+  let settingFailure: string | null = null;
+  const writes: string[] = [];
 
   function writeAll(): SyncResult {
     if (!connection?.ready) return { connected: false, written: 0, failed: 0 };
@@ -53,6 +65,7 @@ export function createFakeCalendarApi(
         result.failed++;
       } else if (decided.get(mealId)) {
         meals.set(mealId, { mealId, status: "synced", error: null });
+        writes.push(mealId);
         result.written++;
       } else {
         meals.delete(mealId);
@@ -68,6 +81,7 @@ export function createFakeCalendarApi(
       return {
         connection: connection && { ...connection },
         meals: [...meals.values()].map((m) => ({ ...m })),
+        attending,
       };
     },
     async startConnecting(tripId) {
@@ -84,6 +98,23 @@ export function createFakeCalendarApi(
       syncCount.set(tripId, (syncCount.get(tripId) ?? 0) + 1);
       if (callFailure) throw new Error(callFailure);
       return writeAll();
+    },
+    async setAttending(_tripId, value) {
+      if (settingFailure) throw new Error(settingFailure);
+      if (value === attending) return;
+      attending = value;
+      for (const mealId of meals.keys()) {
+        meals.set(mealId, { mealId, status: "pending", error: null });
+      }
+    },
+    attending() {
+      return attending;
+    },
+    written() {
+      return [...writes];
+    },
+    failSettings(message) {
+      settingFailure = message;
     },
     queue(mealId, isDecided = true) {
       decided.set(mealId, isDecided);

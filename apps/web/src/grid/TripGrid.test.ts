@@ -680,3 +680,63 @@ describe("when the meals cannot be loaded", () => {
     expect(tabs(wrapper)).toHaveLength(5);
   });
 });
+
+describe("a meal's decision (#11)", () => {
+  function dinnerWithAfuri() {
+    const api = createFakeMealsApi({
+      meals: [
+        aMeal({ id: "dinner", tripId: "tokyo", date: "2026-10-01", slot: "dinner", proposals: 2 }),
+      ],
+    });
+    const proposals = createFakeProposalsApi({
+      proposals: [
+        aProposal({ id: "afuri", mealId: "dinner", placeName: "Afuri" }),
+        aProposal({ id: "tsuta", mealId: "dinner", placeName: "Tsuta" }),
+      ],
+    });
+    return { api, proposals };
+  }
+
+  test("deciding in a meal's details shows on the trail at once, and clearing undoes it", async () => {
+    const { api, proposals } = dinnerWithAfuri();
+    const wrapper = await mountGrid(tokyo, api, proposals);
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+    expect(trail(wrapper)).toContain("Dinner Decided: Afuri");
+
+    await buttonByText(wrapper, "Clear the decision").trigger("click");
+    await flushPromises();
+    expect(trail(wrapper)).toContain("Dinner Being discussed: 2 proposals");
+  });
+
+  test("a decision someone else made since the grid loaded shows once the meal's details load", async () => {
+    const { api, proposals } = dinnerWithAfuri();
+    const wrapper = await mountGrid(tokyo, api, proposals);
+
+    proposals.decideAs("dinner", "tsuta", { id: "bob", name: "Bob Lin" });
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    expect(trail(wrapper)).toContain("Dinner Decided: Tsuta");
+  });
+
+  test("the organiser is offered changing a member's decision; another member is not", async () => {
+    for (const [myRole, offered] of [
+      ["organiser", true],
+      ["member", false],
+    ] as const) {
+      const { api, proposals } = dinnerWithAfuri();
+      proposals.decideAs("dinner", "afuri", { id: "bob", name: "Bob Lin" });
+      const wrapper = await mountGrid({ ...tokyo, myRole }, api, proposals);
+      await slotButton(wrapper, "Dinner").trigger("click");
+      await flushPromises();
+
+      const labels = wrapper.findAll("button").map((b) => b.text().trim());
+      expect(labels.includes("Clear the decision"), myRole).toBe(offered);
+      wrapper.unmount();
+    }
+  });
+});

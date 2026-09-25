@@ -8,6 +8,42 @@ export type Database = {
   };
   public: {
     Tables: {
+      decisions: {
+        Row: {
+          decided_at: string;
+          decided_by: string | null;
+          meal_id: string;
+          proposal_id: string;
+        };
+        Insert: {
+          decided_at?: string;
+          decided_by?: string | null;
+          meal_id: string;
+          proposal_id: string;
+        };
+        Update: {
+          decided_at?: string;
+          decided_by?: string | null;
+          meal_id?: string;
+          proposal_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "decisions_meal_id_fkey";
+            columns: ["meal_id"];
+            isOneToOne: true;
+            referencedRelation: "meals";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "decisions_proposal_fkey";
+            columns: ["proposal_id", "meal_id"];
+            isOneToOne: false;
+            referencedRelation: "proposals";
+            referencedColumns: ["id", "meal_id"];
+          },
+        ];
+      };
       invitations: {
         Row: {
           created_at: string;

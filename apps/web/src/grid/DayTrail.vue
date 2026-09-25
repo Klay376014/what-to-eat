@@ -7,7 +7,8 @@
  *
  * Each meal's button opens its details below it. A breakfast, lunch or
  * dinner nobody has added yet is offered for adding there; a meal that
- * exists lists its proposals there and takes new ones (#8), and an "other"
+ * exists lists its proposals there, takes new ones (#8) and is decided
+ * there (#11), and an "other"
  * meal can be renamed there. "Add another meal" adds an "other" meal with
  * its own name.
  */
@@ -39,10 +40,14 @@ const props = defineProps<{
   rename: RenameMeal;
   /** The trip's timezone, for when each proposal was made. */
   timeZone: string;
+  /** Whether the signed-in member organises the trip. */
+  organiser: boolean;
 }>();
 const emit = defineEmits<{
   /** A meal's proposal count, as its details last loaded or changed it. */
   proposalCount: [mealId: string, count: number];
+  /** A meal's decided restaurant, or null, as its details last loaded or changed it. */
+  decided: [mealId: string, restaurant: string | null];
 }>();
 
 const id = useId();
@@ -240,14 +245,16 @@ async function submitOther() {
           </div>
         </template>
 
-        <!-- The restaurants proposed for it, and proposing another (#8). -->
+        <!-- The restaurants proposed for it, proposing another (#8), and deciding (#11). -->
         <MealProposals
           v-if="entry.meal !== null"
           :key="entry.meal.id"
           :meal-id="entry.meal.id"
           :meal-name="entry.name"
           :time-zone="timeZone"
+          :organiser="organiser"
           @count="(count) => emit('proposalCount', entry.meal!.id, count)"
+          @decided="(restaurant) => emit('decided', entry.meal!.id, restaurant)"
         />
 
         <p v-if="notice" role="status">{{ notice }}</p>

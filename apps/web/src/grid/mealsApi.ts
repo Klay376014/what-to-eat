@@ -48,13 +48,17 @@ type MealRow = Pick<
 > & {
   /** PostgREST's embedded count: one row, `[{ count }]`. */
   proposals: { count: number }[];
+  /** The meal's decision, one-to-one, with the decided proposal's name. */
+  decisions: { proposals: { place_name: string } | null } | null;
 };
 
 /**
- * The meal and how many proposals it has, counted by the database under the
- * proposals policies, so it is the count the caller may see.
+ * The meal, how many proposals it has (counted by the database under the
+ * proposals policies, so it is the count the caller may see), and the
+ * decided restaurant's name.
  */
-const MEAL_COLUMNS = "id, trip_id, date, slot, label, position, proposals(count)";
+const MEAL_COLUMNS =
+  "id, trip_id, date, slot, label, position, proposals(count), decisions(proposals(place_name))";
 /** Postgres unique_violation: the one-breakfast-lunch-dinner-a-day index. */
 const UNIQUE_VIOLATION = "23505";
 
@@ -67,8 +71,7 @@ function toMeal(row: MealRow): Meal {
     label: row.label,
     position: row.position,
     proposals: row.proposals[0]?.count ?? 0,
-    // TODO(#9): the decided restaurant's name once decisions exist.
-    decidedRestaurant: null,
+    decidedRestaurant: row.decisions?.proposals?.place_name ?? null,
   };
 }
 

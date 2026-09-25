@@ -96,6 +96,13 @@ function updateProposalCount(mealId: string, count: number) {
   meals.value = meals.value.map((m) => (m.id === mealId ? { ...m, proposals: count } : m));
 }
 
+/** Keeps a meal's marker in step with its decision, made here or by someone else. */
+function updateDecision(mealId: string, restaurant: string | null) {
+  meals.value = meals.value.map((m) =>
+    m.id === mealId ? { ...m, decidedRestaurant: restaurant } : m,
+  );
+}
+
 const add: AddMeal = async (meal) => {
   const input =
     meal.slot === "other"
@@ -155,7 +162,9 @@ const add: AddMeal = async (meal) => {
           :add="add"
           :rename="rename"
           :time-zone="trip.timezone"
+          :organiser="trip.myRole === 'organiser'"
           @proposal-count="updateProposalCount"
+          @decided="updateDecision"
         />
       </BaseCard>
     </template>

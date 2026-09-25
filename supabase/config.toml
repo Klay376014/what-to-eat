@@ -418,6 +418,11 @@ deno_version = 2
 [functions.calendar]
 verify_jwt = false
 
+# #9: resolves pasted Google Maps short links. Checks the caller's session
+# itself, for the same reason (supabase/functions/maps-link/index.ts).
+[functions.maps-link]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

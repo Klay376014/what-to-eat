@@ -42,7 +42,13 @@ vp run ready      # check + test + build
    supabase secrets set GOOGLE_CALENDAR_CLIENT_ID=... GOOGLE_CALENDAR_CLIENT_SECRET=...
    ```
 
-6. `vp run db:push` 套用 migration，`vp run functions:deploy` 部署 `calendar`（`supabase/config.toml` 設了 `verify_jwt = false`：平台的 JWT 檢查只認舊版 key，改由函式自己驗 session）。
+6. `vp run db:push` 套用 migration，`vp run functions:deploy` 部署全部 Edge Function（含 `calendar`；`supabase/config.toml` 設了 `verify_jwt = false`：平台的 JWT 檢查只認舊版 key，改由函式自己驗 session）。
+
+## Google Maps 短網址（#9）
+
+提案時貼上 `maps.app.goo.gl` 短網址，Edge Function `maps-link` 會問出它指向的地點，自動填入餐廳名稱，並把座標與 CID 存在提案的連結旁邊。這依賴 Google 沒有公開的網址格式，隨時可能失效；失效時只是不再自動填名稱，提案照常（設計見 `docs/adr/0007-maps-link-resolution.md`）。每個短網址只要 Google 有回答就只查一次，結果（包括「不是地點」和 404）永久存在 `public.maps_links`；逾時、連線失敗、429／5xx 不存，下次貼上會再查。提案和日曆事件的「Open in Google Maps」直接開原本貼上的連結（會到店家頁面）；沒有連結時才用官方 Maps URLs 搜尋名稱。
+
+不需要任何 secret 或 API key：`vp run db:push` 套用 migration，`vp run functions:deploy` 部署 `maps-link`（`calendar` 也要重新部署，日曆事件的連結改用原本貼上的連結）。要整個關掉的話，刪掉這個函式（`supabase functions delete maps-link`）就好，app 會當成每個連結都查不到。
 
 ## CI
 

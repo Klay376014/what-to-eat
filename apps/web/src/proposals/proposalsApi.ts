@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { inject, type InjectionKey } from "vue";
 import type { Database } from "../types/database.ts";
 import type { Decision } from "./decision.ts";
+import type { ResolvedPlace } from "./mapsLink.ts";
 import type { NewProposal, Proposal, ProposalEdit } from "./proposal.ts";
 import type { Vote, VoteValue } from "./vote.ts";
 
@@ -43,6 +44,13 @@ export interface ProposalsApi {
   changeDecision(mealId: string, proposalId: string): Promise<Decision>;
   /** Clears the meal's decision, leaving it undecided. */
   clearDecision(mealId: string): Promise<void>;
+  /**
+   * What a pasted Maps short link points at (#9), or null when it could not
+   * be resolved, for any reason. Proposing with the link afterwards stores
+   * the place's CID and coordinates beside it; the database fills them in
+   * from the same resolution. A convenience only: it never throws.
+   */
+  resolveMapsLink(sourceUrl: string): Promise<ResolvedPlace | null>;
 }
 
 /**
@@ -311,6 +319,19 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
         .select("meal_id");
       if (error) throw error;
       if (data.length === 0) throw new Error("This decision can no longer be cleared.");
+    },
+
+    async resolveMapsLink(sourceUrl) {
+      try {
+        const { data, error } = await client.functions.invoke<{ place: ResolvedPlace | null }>(
+          "maps-link",
+          { body: { url: sourceUrl } },
+        );
+        if (error || !data) return null;
+        return data.place ?? null;
+      } catch {
+        return null;
+      }
     },
   };
 }

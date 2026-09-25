@@ -90,18 +90,35 @@ export function optionalText(value: string): string | null {
 }
 
 /**
- * The link out to Google Maps, in the official, key-free Maps URLs scheme
- * (https://developers.google.com/maps/documentation/urls/get-started). The
- * pasted link itself is never used as a link: whatever someone pastes, the
- * app only ever sends people to google.com/maps.
+ * The link out to Google Maps.
  *
- * Coordinates, when #9 has resolved them, pin the exact branch; otherwise
- * Maps searches for the name.
+ * A proposal made with a Maps link opens that link as pasted: it lands on
+ * the place's own page (reviews, hours, the listing), which nothing else
+ * reaches. The official Maps URLs scheme can only name a place by a Places
+ * `place_id`, which short links do not give, so from coordinates it could
+ * only drop a pin (docs/adr/0007-maps-link-resolution.md). The pasted link is
+ * a member's input, so only an http(s) one is ever linked to; the database
+ * and the form accept nothing else either.
+ *
+ * Without a link, the official, key-free scheme
+ * (https://developers.google.com/maps/documentation/urls/get-started)
+ * searches for the name, or for the coordinates when there are any.
  */
-export function mapsUrl(place: Pick<Proposal, "placeName" | "lat" | "lng">): string {
+export function mapsUrl(place: Pick<Proposal, "placeName" | "sourceUrl" | "lat" | "lng">): string {
+  if (place.sourceUrl !== null && isWebLink(place.sourceUrl)) return place.sourceUrl;
   const query =
     place.lat !== null && place.lng !== null ? `${place.lat},${place.lng}` : place.placeName;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function isWebLink(text: string): boolean {
+  if (!/^https?:\/\//i.test(text)) return false;
+  try {
+    const { protocol } = new URL(text);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 /**

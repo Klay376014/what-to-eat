@@ -6,7 +6,7 @@ import { withBackoff } from "../../../apps/web/src/calendar/backoff.ts";
 import type { CalendarEvent } from "../../../apps/web/src/calendar/calendarEvent.ts";
 
 // The scope the app asks for, and so the one a connection must have been granted.
-export { CALENDAR_SCOPE } from "../../../apps/web/src/calendar/calendarConnect.ts";
+export { CALENDAR_SCOPE } from "../../../apps/web/src/calendar/scope.ts";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://www.googleapis.com/calendar/v3";

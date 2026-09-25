@@ -18,7 +18,13 @@ export interface FakeMealsApi extends MealsApi {
  * It knows nothing about who may see what. Access control is the database's
  * job and is tested there (supabase/tests/database/), never through this.
  */
-export function createFakeMealsApi(seed: { meals?: Meal[] } = {}): FakeMealsApi {
+export function createFakeMealsApi(
+  seed: {
+    meals?: Meal[];
+    /** Told when a meal's time changes: where the database queues its event (#12). */
+    onStartTimeChange?: (mealId: string) => void;
+  } = {},
+): FakeMealsApi {
   const meals = (seed.meals ?? []).map((meal) => ({ ...meal }));
   let nextId = 1;
   let nextPosition = Math.max(0, ...meals.map((m) => m.position)) + 1;
@@ -46,6 +52,7 @@ export function createFakeMealsApi(seed: { meals?: Meal[] } = {}): FakeMealsApi 
         slot: input.slot,
         label: input.slot === "other" ? input.label.trim() : null,
         position: nextPosition++,
+        startTime: null,
         proposals: 0,
         decidedRestaurant: null,
       };
@@ -58,6 +65,17 @@ export function createFakeMealsApi(seed: { meals?: Meal[] } = {}): FakeMealsApi 
       // Like the database's CHECK: only "other" meals carry a name.
       if (meal.slot !== "other") throw new Error(`A ${meal.slot} has no name to change.`);
       meal.label = label.trim();
+      return { ...meal };
+    },
+    async setStartTime(mealId, startTime) {
+      const meal = meals.find((m) => m.id === mealId);
+      if (!meal) throw new Error(`No meal ${mealId}`);
+      // Like the database's CHECK: whole minutes.
+      if (startTime !== null && !/^\d{2}:\d{2}$/.test(startTime)) {
+        throw new Error(`Not a time in minutes: ${startTime}`);
+      }
+      if (meal.startTime !== startTime) seed.onStartTimeChange?.(mealId);
+      meal.startTime = startTime;
       return { ...meal };
     },
     seed(meal) {
@@ -74,6 +92,7 @@ export function aMeal(overrides: Partial<Meal> & Pick<Meal, "tripId" | "date" | 
     id: `seeded-${id}`,
     label: overrides.slot === "other" ? "Snack" : null,
     position: id,
+    startTime: null,
     proposals: 0,
     decidedRestaurant: null,
     ...overrides,

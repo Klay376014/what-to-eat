@@ -115,6 +115,10 @@ jobs:
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          # #12: the calendar's own OAuth client (public, like any client ID).
+          # Optional: without it the app runs, and connecting a calendar says
+          # it isn't set up.
+          VITE_GOOGLE_CALENDAR_CLIENT_ID: ${{ vars.GOOGLE_CALENDAR_CLIENT_ID }}
           BASE: ${{ steps.pages.outputs.base_path }}/app/
         run: |
           set -euo pipefail

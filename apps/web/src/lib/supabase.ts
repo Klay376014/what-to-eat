@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { isCalendarReturn } from "../calendar/calendarConnect.ts";
 import type { Database } from "../types/database.ts";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -11,6 +12,14 @@ if (!url || !key) {
 }
 
 export const supabase = createClient<Database>(url, key, {
-  // The OAuth return carries a one-time code rather than tokens in the URL.
-  auth: { flowType: "pkce" },
+  auth: {
+    // The OAuth return carries a one-time code rather than tokens in the URL.
+    flowType: "pkce",
+    // Google's answer to connecting a calendar (#12) comes back to this
+    // address too. It is not a sign-in, even when it carries an error, so
+    // Supabase leaves it for calendarConnect.ts; otherwise, its own check.
+    detectSessionInUrl: (_url, params) =>
+      !isCalendarReturn(params) &&
+      Boolean(params.access_token || params.error || params.error_description || params.error_code),
+  },
 });

@@ -54,5 +54,12 @@ client or the consent screen changes.
 
 - Anything that needs more of Google, Calendar above all, gets its own OAuth
   client and flow. It never adds a scope to this one.
+- The calendar client (#12) asks for `calendar.app.created` only. Spike #2
+  found that an unverified app in production gets no warning screen for it,
+  apparently because it is not a sensitive scope, so the member who connects
+  a calendar sees an ordinary consent screen. A broader Calendar scope would
+  bring the warning back: check again before widening it. Keeping it off the
+  sign-in client still matters, so ordinary members are never asked for
+  calendar access at all.
 - The check is not automatic in CI: it needs the hosted project and a real
   Google client. `auth.test.ts` guards the app's half on every run.

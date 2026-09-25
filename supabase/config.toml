@@ -412,6 +412,12 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# #12: writes decided meals to the trip calendar. The platform's JWT check
+# only understands the legacy keys, so the function checks the caller's
+# session itself (supabase/functions/calendar/index.ts).
+[functions.calendar]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

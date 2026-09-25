@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { pendingCalendarReturn } from "../calendar/calendarConnect.ts";
 import TripGrid from "../grid/TripGrid.vue";
 import { errorMessage } from "../lib/errors.ts";
 import BaseButton from "../ui/BaseButton.vue";
@@ -32,8 +33,11 @@ async function load() {
   failure.value = null;
   try {
     trips.value = await api.listTrips();
+    // #12: back from Google's consent screen, the trip it connects comes first.
+    const connecting = pendingCalendarReturn()?.tripId ?? null;
     selectedId.value =
       trips.value.find((t) => t.id === props.openTripId)?.id ??
+      trips.value.find((t) => t.id === connecting)?.id ??
       pickDefaultTrip(trips.value, new Date())?.id ??
       null;
   } catch (error) {

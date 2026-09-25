@@ -4,6 +4,8 @@
 // the real policies (supabase/tests/database/ does that).
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { calendarApiKey } from "../calendar/calendarApi.ts";
+import { createFakeCalendarApi } from "../test/fakeCalendarApi.ts";
 import { mealsApiKey } from "../grid/mealsApi.ts";
 import { createFakeMealsApi } from "../test/fakeMealsApi.ts";
 import { membershipApiKey } from "../invitations/membershipApi.ts";
@@ -30,6 +32,8 @@ async function mountHome(api: TripsApi) {
       provide: {
         [tripsApiKey as symbol]: api,
         [mealsApiKey as symbol]: createFakeMealsApi(),
+        // #12: the grid also shows the trip's calendar.
+        [calendarApiKey as symbol]: createFakeCalendarApi(),
         // #6: the trip view also shows its members.
         [membershipApiKey as symbol]: createFakeMembership({ me: { userId: "me", name: "Me" } })
           .api,

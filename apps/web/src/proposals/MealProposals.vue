@@ -16,12 +16,18 @@
  * organiser, is offered changing or clearing it. A decided restaurant's name
  * stays, like a voted-on one.
  *
+ * A decided meal also says how its calendar event stands (#12): not on a
+ * calendar yet, on it, or why writing it failed. Every change to the
+ * decision asks the trip's calendar to follow.
+ *
  * Which buttons appear is for convenience only. Who may propose, edit, vote
  * and decide, and the name locks, are enforced by the database
  * (supabase/migrations/20260926090000_proposals.sql, 20260927090000_votes.sql,
  * 20260928090000_decisions.sql).
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
+import { mealSyncNote } from "../calendar/calendarStatus.ts";
+import { useTripCalendar } from "../calendar/useTripCalendar.ts";
 import { errorMessage } from "../lib/errors.ts";
 import MemberAvatar from "../members/MemberAvatar.vue";
 import BaseButton from "../ui/BaseButton.vue";
@@ -62,6 +68,7 @@ const emit = defineEmits<{
 }>();
 
 const api = useProposalsApi();
+const calendar = useTripCalendar();
 const headingId = useId();
 const decisionHeadingId = useId();
 
@@ -204,6 +211,8 @@ async function submitEdit(proposal: Proposal) {
         note: optionalText(editNote.value),
       }),
     );
+    // The decided restaurant's note is on its event too.
+    if (isDecided(proposal)) void calendar?.followChange();
     await cancelEditing();
   } catch (error) {
     if (error instanceof NameLockedError && error.reason === "voted") {
@@ -304,6 +313,14 @@ function announceDecision() {
   emit("decided", decidedProposal.value?.placeName ?? null);
 }
 
+/** How the decided meal's calendar event stands, once the trip's calendar is known. */
+const syncNote = computed(() => {
+  if (!calendar || !decision.value || !calendar.status.value) return null;
+  // Not queued yet is on its way to being queued: the decision just landed.
+  const sync = calendar.mealSync(props.mealId) ?? { status: "pending" as const, error: null };
+  return mealSyncNote(sync, calendar.status.value.connection);
+});
+
 /** Reads the decision again after the database refused a change to it. */
 async function refreshDecision() {
   try {
@@ -322,6 +339,7 @@ async function decideOn(proposal: Proposal) {
       ? await api.changeDecision(props.mealId, proposal.id)
       : await api.decide(props.mealId, proposal.id);
     announceDecision();
+    void calendar?.followChange();
   } catch (error) {
     if (error instanceof AlreadyDecidedError) {
       await refreshDecision();
@@ -342,6 +360,8 @@ async function clearDecision() {
     await api.clearDecision(props.mealId);
     decision.value = null;
     announceDecision();
+    // Its event is deleted.
+    void calendar?.followChange();
   } catch (error) {
     decideFailure.value = `Couldn't clear the decision: ${errorMessage(error)}`;
   } finally {
@@ -379,6 +399,15 @@ async function clearDecision() {
           <time :datetime="decision.decidedAt">{{
             formatProposedAt(decision.decidedAt, timeZone)
           }}</time>
+        </p>
+        <p
+          v-if="syncNote"
+          class="sync"
+          :class="`sync--${syncNote.tone}`"
+          :role="syncNote.tone === 'problem' ? 'alert' : undefined"
+        >
+          <BaseIcon name="calendar-blank" />
+          <span>{{ syncNote.text }}</span>
         </p>
         <div v-if="decidedProposal.sourceUrl || mayChangeDecision" class="actions proposal-actions">
           <a
@@ -627,6 +656,28 @@ async function clearDecision() {
   font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* The calendar's word on the meal: quiet when it is fine, loud when it is not. */
+.sync {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.sync--ok,
+.sync--waiting {
+  color: var(--muted);
+}
+
+.sync--waiting {
+  font-weight: var(--strong-weight);
+}
+
+.sync--problem {
+  color: var(--danger-text);
+  font-weight: var(--strong-weight);
 }
 
 .decided-mark {

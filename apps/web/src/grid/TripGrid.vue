@@ -5,7 +5,10 @@
  * day's meals sit on a trail. The selected day lives in the address as
  * `?day=`, so a link can open a given day.
  */
-import { computed, onMounted, ref, useId } from "vue";
+import { computed, onMounted, provide, ref, useId } from "vue";
+import { useCalendarApi } from "../calendar/calendarApi.ts";
+import TripCalendar from "../calendar/TripCalendar.vue";
+import { createTripCalendar, tripCalendarKey } from "../calendar/useTripCalendar.ts";
 import { errorMessage } from "../lib/errors.ts";
 import { dateIn, type IsoDate, type Trip } from "../trips/trip.ts";
 import BaseButton from "../ui/BaseButton.vue";
@@ -13,7 +16,7 @@ import BaseCard from "../ui/BaseCard.vue";
 import TextField from "../ui/TextField.vue";
 import { isIsoDate, readDayParam, writeDayParam } from "./dayParam.ts";
 import DayTabs from "./DayTabs.vue";
-import DayTrail, { type AddMeal, type RenameMeal } from "./DayTrail.vue";
+import DayTrail, { type AddMeal, type RenameMeal, type SetMealTime } from "./DayTrail.vue";
 import type { Meal } from "./meal.ts";
 import { SlotTakenError, useMealsApi } from "./mealsApi.ts";
 import { dayTabs, dayTrail, defaultDay, tripDates } from "./tripDays.ts";
@@ -21,6 +24,10 @@ import { dayTabs, dayTrail, defaultDay, tripDates } from "./tripDays.ts";
 const props = defineProps<{ trip: Trip }>();
 
 const api = useMealsApi();
+// #12: the trip's calendar, shared by its card and every meal's details. The
+// grid is keyed on the trip, so this is the one trip's for the grid's life.
+const calendar = createTripCalendar(useCalendarApi(), props.trip.id);
+provide(tripCalendarKey, calendar);
 const id = useId();
 const tabIdPrefix = `${id}-day`;
 const panelId = `${id}-panel`;
@@ -86,6 +93,20 @@ function goTo(day: string) {
 const rename: RenameMeal = async (mealId, label) => {
   const renamed = await api.renameMeal(mealId, label);
   meals.value = meals.value.map((m) => (m.id === mealId ? { ...m, label: renamed.label } : m));
+};
+
+/**
+ * Sets a meal's own start time. A decided meal's event follows it: the
+ * database has queued it, so the calendar is asked to write it. Asked for
+ * every meal, since this grid may not know of a decision made elsewhere; an
+ * undecided meal has nothing queued, so nothing is written.
+ */
+const setTime: SetMealTime = async (mealId, startTime) => {
+  const updated = await api.setStartTime(mealId, startTime);
+  meals.value = meals.value.map((m) =>
+    m.id === mealId ? { ...m, startTime: updated.startTime } : m,
+  );
+  void calendar.followChange();
 };
 
 /**
@@ -161,6 +182,7 @@ const add: AddMeal = async (meal) => {
           :trail="trail"
           :add="add"
           :rename="rename"
+          :set-time="setTime"
           :time-zone="trip.timezone"
           :organiser="trip.myRole === 'organiser'"
           @proposal-count="updateProposalCount"
@@ -168,6 +190,9 @@ const add: AddMeal = async (meal) => {
         />
       </BaseCard>
     </template>
+
+    <!-- #12: whether decided meals are reaching a calendar, and connecting one. -->
+    <TripCalendar :trip="trip" />
   </section>
 </template>
 

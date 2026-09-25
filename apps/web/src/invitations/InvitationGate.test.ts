@@ -6,6 +6,8 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h } from "vue";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { calendarApiKey } from "../calendar/calendarApi.ts";
+import { createFakeCalendarApi } from "../test/fakeCalendarApi.ts";
 import { mealsApiKey } from "../grid/mealsApi.ts";
 import { createFakeMealsApi } from "../test/fakeMealsApi.ts";
 import { createFakeMembership, type FakeLink } from "../test/fakeMembershipApi.ts";
@@ -80,6 +82,8 @@ async function openWith(
         [membershipApiKey as symbol]: fake.api,
         // #7: the trip view also shows the trip grid.
         [mealsApiKey as symbol]: createFakeMealsApi(),
+        // #12: the grid also shows the trip's calendar.
+        [calendarApiKey as symbol]: createFakeCalendarApi(),
       },
     },
     attachTo: document.body,

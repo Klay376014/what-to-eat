@@ -11,8 +11,13 @@
  * there (#11), and an "other"
  * meal can be renamed there. "Add another meal" adds an "other" meal with
  * its own name.
+ *
+ * Each meal starts at its slot's usual time, on the trip's clock, unless
+ * someone sets its own (#12); that is the time its calendar event is for.
  */
 import { nextTick, ref, useId, useTemplateRef, watch } from "vue";
+import { zoneCity } from "../calendar/calendarEvent.ts";
+import { DEFAULT_START, mealStart } from "../calendar/mealTime.ts";
 import { errorMessage } from "../lib/errors.ts";
 import type { IsoDate } from "../trips/trip.ts";
 import MealProposals from "../proposals/MealProposals.vue";
@@ -33,12 +38,16 @@ export type AddMeal = (meal: { slot: FixedSlot } | { slot: "other"; label: strin
 /** Renames an "other" meal; throws when the rename is refused. */
 export type RenameMeal = (mealId: string, label: string) => Promise<void>;
 
+/** Sets a meal's own start time ("HH:MM"), or null for its slot's usual one. */
+export type SetMealTime = (mealId: string, startTime: string | null) => Promise<void>;
+
 const props = defineProps<{
   date: IsoDate;
   trail: readonly TrailEntry[];
   add: AddMeal;
   rename: RenameMeal;
-  /** The trip's timezone, for when each proposal was made. */
+  setTime: SetMealTime;
+  /** The trip's timezone: every time here is on its clock. */
   timeZone: string;
   /** Whether the signed-in member organises the trip. */
   organiser: boolean;
@@ -71,6 +80,14 @@ const renameFailure = ref<string | null>(null);
 const renameForm = useTemplateRef<HTMLFormElement[]>("renameForm");
 const renameButton = useTemplateRef<InstanceType<typeof BaseButton>[]>("renameButton");
 
+/** The meal whose start time is being changed, if any. */
+const retiming = ref<string | null>(null);
+const newTime = ref("");
+const newTimeError = ref<string | undefined>(undefined);
+const timeFailure = ref<string | null>(null);
+const timeForm = useTemplateRef<HTMLFormElement[]>("timeForm");
+const retimeButton = useTemplateRef<InstanceType<typeof BaseButton>[]>("retimeButton");
+
 // A different day starts with everything closed.
 watch(
   () => props.date,
@@ -78,6 +95,7 @@ watch(
     expanded.value = null;
     closeAdding();
     closeRenaming();
+    closeRetiming();
   },
 );
 
@@ -85,6 +103,7 @@ function toggle(entry: TrailEntry) {
   failure.value = null;
   notice.value = null;
   closeRenaming();
+  closeRetiming();
   expanded.value = expanded.value === entry.key ? null : entry.key;
 }
 
@@ -120,6 +139,59 @@ async function submitRename(entry: TrailEntry) {
     await cancelRenaming();
   } catch (error) {
     renameFailure.value = `Couldn't rename the meal: ${errorMessage(error)}`;
+  } finally {
+    busy.value = false;
+  }
+}
+
+// A meal's time ------------------------------------------------------------------
+
+/** "Starts at 19:00 Tokyo time, dinner's usual time." */
+function timeText(entry: TrailEntry): string {
+  const meal = entry.meal!;
+  const at = `Starts at ${mealStart(meal)} ${zoneCity(props.timeZone)} time`;
+  if (meal.startTime !== null) return `${at}.`;
+  return entry.slot === "other"
+    ? `${at}, the usual time.`
+    : `${at}, ${entry.name.toLowerCase()}'s usual time.`;
+}
+
+async function openRetiming(entry: TrailEntry) {
+  closeRenaming();
+  retiming.value = entry.key;
+  newTime.value = mealStart(entry.meal!);
+  newTimeError.value = undefined;
+  timeFailure.value = null;
+  await nextTick();
+  timeForm.value?.[0]?.querySelector("input")?.focus();
+}
+
+function closeRetiming() {
+  retiming.value = null;
+  newTime.value = "";
+  newTimeError.value = undefined;
+  timeFailure.value = null;
+}
+
+async function cancelRetiming() {
+  closeRetiming();
+  await nextTick();
+  (retimeButton.value?.[0]?.$el as HTMLElement | undefined)?.focus();
+}
+
+/** Saves the typed time, or, with null, goes back to the slot's usual time. */
+async function saveTime(entry: TrailEntry, startTime: string | null) {
+  if (startTime !== null && !/^\d{2}:\d{2}$/.test(startTime)) {
+    newTimeError.value = "Say when it starts, like 19:30.";
+    return;
+  }
+  busy.value = true;
+  timeFailure.value = null;
+  try {
+    await props.setTime(entry.meal!.id, startTime);
+    await cancelRetiming();
+  } catch (error) {
+    timeFailure.value = `Couldn't change the time: ${errorMessage(error)}`;
   } finally {
     busy.value = false;
   }
@@ -216,6 +288,43 @@ async function submitOther() {
           {{ entry.name }} is decided: {{ entry.state.restaurant }}.
         </p>
 
+        <!-- When it starts, on the trip's clock (#12). -->
+        <template v-if="entry.meal !== null">
+          <form
+            v-if="retiming === entry.key"
+            ref="timeForm"
+            class="stack-sm"
+            novalidate
+            @submit.prevent="saveTime(entry, newTime)"
+          >
+            <TextField
+              v-model="newTime"
+              :label="`Start time (${zoneCity(timeZone)} time)`"
+              type="time"
+              step="60"
+              :error="newTimeError"
+            />
+            <p v-if="timeFailure" role="alert" class="error">{{ timeFailure }}</p>
+            <div class="actions">
+              <BaseButton type="submit" variant="primary" :disabled="busy">Save time</BaseButton>
+              <BaseButton
+                v-if="entry.meal.startTime !== null"
+                :disabled="busy"
+                @click="saveTime(entry, null)"
+              >
+                Use the usual time, {{ DEFAULT_START[entry.slot] }}
+              </BaseButton>
+              <BaseButton :disabled="busy" @click="cancelRetiming">Cancel</BaseButton>
+            </div>
+          </form>
+          <div v-else class="time">
+            <p>{{ timeText(entry) }}</p>
+            <BaseButton ref="retimeButton" variant="quiet" @click="openRetiming(entry)">
+              <BaseIcon name="pencil-simple" /> Change time
+            </BaseButton>
+          </div>
+        </template>
+
         <!-- Only an "other" meal has a name of its own to change. -->
         <template v-if="entry.meal !== null && entry.slot === 'other'">
           <form
@@ -286,6 +395,13 @@ async function submitOther() {
 </template>
 
 <style scoped>
+.time {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* The route: a dashed line down the left, a pin at each stop. */
 .trail {
   list-style: none;

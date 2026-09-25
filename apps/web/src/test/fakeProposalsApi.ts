@@ -36,8 +36,14 @@ export function createFakeProposalsApi(
     me?: { id: string; name: string | null };
     proposals?: Proposal[];
     decisions?: Decision[];
+    /**
+     * Told whenever a meal's decision, or its decided restaurant, changes:
+     * where the database queues the meal for its calendar (#12).
+     */
+    onDecisionChange?: (mealId: string, decided: boolean) => void;
   } = {},
 ): FakeProposalsApi {
+  const changed = options.onDecisionChange ?? (() => {});
   const me = options.me ?? { id: "me", name: "Mei Lin" };
   const proposals = (options.proposals ?? []).map((p) => ({ ...p, votes: [...p.votes] }));
   let nextId = 1;
@@ -114,6 +120,8 @@ export function createFakeProposalsApi(
       }
       if (name !== undefined) proposal.placeName = name;
       proposal.note = edit.note;
+      const decidedMeal = [...decisions.values()].find((d) => d.proposalId === proposalId);
+      if (decidedMeal) changed(decidedMeal.mealId, true);
       return copy(proposal);
     },
     async vote(proposalId, value) {
@@ -134,19 +142,23 @@ export function createFakeProposalsApi(
       if (decisions.has(mealId)) throw new AlreadyDecidedError();
       const made = makeDecision(mealId, proposalId, me);
       decisions.set(mealId, made);
+      changed(mealId, true);
       return { ...made };
     },
     async changeDecision(mealId, proposalId) {
       if (!decisions.has(mealId)) throw new Error("This meal is no longer decided.");
-      const changed = makeDecision(mealId, proposalId, me);
-      decisions.set(mealId, changed);
-      return { ...changed };
+      const made = makeDecision(mealId, proposalId, me);
+      decisions.set(mealId, made);
+      changed(mealId, true);
+      return { ...made };
     },
     async clearDecision(mealId) {
       if (!decisions.delete(mealId)) throw new Error("This decision can no longer be cleared.");
+      changed(mealId, false);
     },
     decideAs(mealId, proposalId, decider) {
       decisions.set(mealId, makeDecision(mealId, proposalId, decider));
+      changed(mealId, true);
     },
     seed(proposal) {
       proposals.push(copy(proposal));

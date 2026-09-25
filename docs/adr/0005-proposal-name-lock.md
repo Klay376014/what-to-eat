@@ -105,6 +105,18 @@ the lock. `votes_name_lock.test.sql` is the pgTAP test step 2 asks for.
 Deleting an account deletes its votes (docs/privacy.md keeps only the
 restaurants a person proposed), so it can unlock a name too.
 
+### A decided restaurant keeps its name too (#11)
+
+The same swap threatens a decision: a meal decided on a proposal nobody
+voted on would otherwise let its proposer rename the decided restaurant.
+`20260928090000_decisions.sql` adds a second trigger on `proposals`,
+`proposals_decided_name`, that refuses a change of `place_name` with
+`P0001 proposal_decided` while a decision names the proposal, for every
+role. It needs no marker: the decision row itself is the fact, and clearing
+the decision frees the name again (unless votes still lock it). Deciding
+takes the proposal's row lock first, so a rename and a decision take turns
+rather than both landing.
+
 ## Consequences
 
 - The lock holds today, and pgTAP tests it today, with nothing in the schema

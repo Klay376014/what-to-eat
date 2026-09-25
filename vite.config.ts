@@ -19,6 +19,7 @@ export default defineConfig({
     // push as if it had run, so each one always executes.
     tasks: {
       "db:push": { command: "supabase db push", cache: false },
+      "functions:deploy": { command: "supabase functions deploy calendar", cache: false },
       "db:types": {
         command:
           "supabase gen types typescript --linked --schema public > apps/web/src/types/database.ts",

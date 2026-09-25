@@ -11,6 +11,8 @@ import {
   type FakeProposalsApi,
 } from "../test/fakeProposalsApi.ts";
 import { aTrip } from "../test/fakeTripsApi.ts";
+import { calendarApiKey } from "../calendar/calendarApi.ts";
+import { createFakeCalendarApi, type FakeCalendarApi } from "../test/fakeCalendarApi.ts";
 import { proposalsApiKey } from "../proposals/proposalsApi.ts";
 import { buttonByText, fieldByLabel } from "../test/dom.ts";
 import type { Trip } from "../trips/trip.ts";
@@ -42,11 +44,16 @@ async function mountGrid(
   trip: Trip,
   api: FakeMealsApi = createFakeMealsApi(),
   proposals: FakeProposalsApi = createFakeProposalsApi(),
+  calendar: FakeCalendarApi = createFakeCalendarApi(),
 ) {
   const wrapper = mount(TripGrid, {
     props: { trip },
     global: {
-      provide: { [mealsApiKey as symbol]: api, [proposalsApiKey as symbol]: proposals },
+      provide: {
+        [mealsApiKey as symbol]: api,
+        [proposalsApiKey as symbol]: proposals,
+        [calendarApiKey as symbol]: calendar,
+      },
     },
     attachTo: document.body,
   });
@@ -738,5 +745,143 @@ describe("a meal's decision (#11)", () => {
       expect(labels.includes("Clear the decision"), myRole).toBe(offered);
       wrapper.unmount();
     }
+  });
+});
+
+describe("a meal's time", () => {
+  function tokyoDinner(calendar?: FakeCalendarApi) {
+    return createFakeMealsApi({
+      meals: [aMeal({ id: "dinner", tripId: "tokyo", date: "2026-10-01", slot: "dinner" })],
+      onStartTimeChange: (mealId) => calendar?.queue(mealId),
+    });
+  }
+
+  test("is its slot's usual time, on the trip's clock", async () => {
+    const wrapper = await mountGrid(tokyo, tokyoDinner());
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    expect(panel(wrapper).text()).toContain("Starts at 19:00 Tokyo time, dinner's usual time.");
+  });
+
+  test("can be set for this meal, and put back to the usual time", async () => {
+    const api = tokyoDinner();
+    const wrapper = await mountGrid(tokyo, api);
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    await buttonByText(wrapper, "Change time").trigger("click");
+    await fieldByLabel(wrapper, "Start time (Tokyo time)").setValue("20:30");
+    await buttonByText(wrapper, "Save time").trigger("click");
+    await flushPromises();
+
+    expect(panel(wrapper).text()).toContain("Starts at 20:30 Tokyo time.");
+    expect((await api.listMeals("tokyo"))[0]!.startTime).toBe("20:30");
+
+    await buttonByText(wrapper, "Change time").trigger("click");
+    await buttonByText(wrapper, "Use the usual time, 19:00").trigger("click");
+    await flushPromises();
+
+    expect(panel(wrapper).text()).toContain("Starts at 19:00 Tokyo time, dinner's usual time.");
+    expect((await api.listMeals("tokyo"))[0]!.startTime).toBeNull();
+  });
+
+  test("needs a time to save one", async () => {
+    const wrapper = await mountGrid(tokyo, tokyoDinner());
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    await buttonByText(wrapper, "Change time").trigger("click");
+    await fieldByLabel(wrapper, "Start time (Tokyo time)").setValue("");
+    await buttonByText(wrapper, "Save time").trigger("click");
+    await flushPromises();
+
+    expect(panel(wrapper).text()).toContain("Say when it starts, like 19:30.");
+  });
+
+  test("a new time for a decided meal is written to its calendar event", async () => {
+    const calendar = createFakeCalendarApi({
+      connection: { holderId: "kenji", holderIsMe: false, holderName: "Kenji", ready: true },
+      meals: [{ mealId: "dinner", status: "synced", error: null }],
+    });
+    const api = tokyoDinner(calendar);
+    const proposals = createFakeProposalsApi({
+      proposals: [aProposal({ id: "afuri", mealId: "dinner", placeName: "Afuri" })],
+    });
+    proposals.decideAs("dinner", "afuri", { id: "kenji", name: "Kenji" });
+    const wrapper = await mountGrid(tokyo, api, proposals, calendar);
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+    const before = calendar.syncs("tokyo");
+
+    await buttonByText(wrapper, "Change time").trigger("click");
+    await fieldByLabel(wrapper, "Start time (Tokyo time)").setValue("20:30");
+    await buttonByText(wrapper, "Save time").trigger("click");
+    await flushPromises();
+
+    expect(calendar.syncs("tokyo")).toBe(before + 1);
+    expect(panel(wrapper).text()).toContain("On Kenji's trip calendar, with everyone invited.");
+  });
+});
+
+describe("a decided meal and the trip's calendar", () => {
+  const kenji = { holderId: "kenji", holderIsMe: false, holderName: "Kenji", ready: true };
+
+  function decidable(calendar: FakeCalendarApi) {
+    const api = createFakeMealsApi({
+      meals: [aMeal({ id: "dinner", tripId: "tokyo", date: "2026-10-01", slot: "dinner" })],
+    });
+    const proposals = createFakeProposalsApi({
+      proposals: [aProposal({ id: "afuri", mealId: "dinner", placeName: "Afuri" })],
+      // The database queues the meal whenever its decision changes.
+      onDecisionChange: (mealId, decided) => calendar.queue(mealId, decided),
+    });
+    return { api, proposals };
+  }
+
+  async function decideDinner(calendar: FakeCalendarApi) {
+    const { api, proposals } = decidable(calendar);
+    const wrapper = await mountGrid(tokyo, api, proposals, calendar);
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+    await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
+    await flushPromises();
+    return wrapper;
+  }
+
+  test("can be decided with no calendar, and says it isn't on one yet", async () => {
+    const wrapper = await decideDinner(createFakeCalendarApi());
+
+    expect(panel(wrapper).text()).toContain(
+      "Not on a calendar yet: nobody has connected one for this trip.",
+    );
+    expect(wrapper.text()).toContain("1 decided meal isn't on a calendar yet.");
+  });
+
+  test("is written to the trip's calendar as soon as it is decided", async () => {
+    const calendar = createFakeCalendarApi({ connection: kenji });
+    const wrapper = await decideDinner(calendar);
+
+    expect(panel(wrapper).text()).toContain("On Kenji's trip calendar, with everyone invited.");
+  });
+
+  test("has its event deleted when the decision is cleared", async () => {
+    const calendar = createFakeCalendarApi({ connection: kenji });
+    const wrapper = await decideDinner(calendar);
+
+    await buttonByText(wrapper, "Clear the decision").trigger("click");
+    await flushPromises();
+
+    expect((await calendar.getStatus("tokyo")).meals).toEqual([]);
+  });
+
+  test("says so, on the meal, when its event could not be written", async () => {
+    const calendar = createFakeCalendarApi({ connection: kenji });
+    calendar.failWrites("Couldn't write the event: Google answered 403 (Forbidden)");
+    const wrapper = await decideDinner(calendar);
+
+    expect(panel(wrapper).get('[role="alert"]').text()).toBe(
+      "Not on the calendar: Couldn't write the event: Google answered 403 (Forbidden)",
+    );
   });
 });

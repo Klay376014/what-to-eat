@@ -28,6 +28,22 @@ vp run ready      # check + test + build
 3. Supabase dashboard → Authentication → Sign In / Providers → Google：填 client ID / secret 並啟用；同一頁把 Email provider 關掉（Google 是唯一登入方式）。URL Configuration 的 Site URL / Redirect URLs 加上前端網址（本機是 `http://localhost:5173/**`；結尾的 `/**` 不能省，app 送出的網址帶斜線，少了它比對會失敗、登入後被導回 Site URL）。
 4. `vp run auth:check-scopes`：確認 hosted 專案實際向 Google 要的 scope 沒有超出 `openid email profile`，結果補進 ADR 的驗證表。
 
+## 日曆（Google Calendar，#12）
+
+定案的餐會寫進一個以旅程命名的**次要日曆**，旅程成員是與會者，所以會直接出現在他們自己的日曆裡。連接日曆是和登入分開的授權，只用 `calendar.app.created` 這個 scope（原因見 `docs/adr/0001-google-sign-in-scopes.md`；寫入流程見 `docs/adr/0006-calendar-sync-queue.md`）。refresh token 只存在資料庫，只有 Edge Function `calendar` 讀得到。
+
+1. Google Cloud（和登入同一個專案即可）→ APIs & Services → Library：啟用 **Google Calendar API**。
+2. Google Auth Platform → Data Access：加上 `https://www.googleapis.com/auth/calendar.app.created`。不要加更寬的 Calendar scope：這個 scope 不是 sensitive，所以同意畫面沒有「未驗證的應用程式」警告（#2 實測）；換成更寬的會讓警告回來。
+3. Clients → 另建一個 **Web application** client 專給日曆用（不要和登入的共用）。Authorised redirect URIs 填 app 的網址本身：`http://localhost:5173/` 和 `https://klay376014.github.io/what-to-eat/app/`（結尾斜線要有，app 送出的就是 `origin + pathname`）。
+4. `apps/web/.env` 填 `VITE_GOOGLE_CALENDAR_CLIENT_ID`（client ID 是公開的）；GitHub → Settings → Secrets and variables → Actions → **Variables** 加 `GOOGLE_CALENDAR_CLIENT_ID`，部署時編進前端。沒設的話 app 照常運作，只是按「Connect Google Calendar」會說還沒設定。
+5. Edge Function 的 secrets（client secret 只放這裡）：
+
+   ```bash
+   supabase secrets set GOOGLE_CALENDAR_CLIENT_ID=... GOOGLE_CALENDAR_CLIENT_SECRET=...
+   ```
+
+6. `vp run db:push` 套用 migration，`vp run functions:deploy` 部署 `calendar`（`supabase/config.toml` 設了 `verify_jwt = false`：平台的 JWT 檢查只認舊版 key，改由函式自己驗 session）。
+
 ## CI
 
 - `.github/workflows/ci.yml`：PR 與 push 到 `main` 時跑 `vp check`、`vp run -r test`，並在 runner 上啟動本機 Supabase、套用 migrations、跑 `supabase test db`（pgTAP，測試放在 `supabase/tests/database/*.test.sql`）。本機沒有 Docker，資料庫測試只在 CI 跑。

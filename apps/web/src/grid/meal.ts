@@ -27,6 +27,11 @@ export interface Meal {
   label: string | null;
   /** Its place in the day. Only "other" meals share a slot, so this orders them. */
   position: number;
+  /**
+   * When it starts on the trip's clock ("HH:MM"), when someone set it; null
+   * for its slot's usual time (calendar/mealTime.ts).
+   */
+  startTime: string | null;
   /** How many restaurants have been proposed for it. */
   proposals: number;
   /** The decided restaurant's name, or null while undecided. */

@@ -1,0 +1,18 @@
+{
+  // Type-checks the Edge Functions under `vp check`. They run on Deno, which
+  // resolves `@supabase/supabase-js` through each function's deno.json; here
+  // it resolves to the copy apps/web installs, and deno.d.ts stands in for
+  // the parts of Deno's own types the functions use.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": [],
+    "paths": {
+      "@supabase/supabase-js": [
+        "../../apps/web/node_modules/@supabase/supabase-js/dist/index.d.mts"
+      ]
+    }
+  },
+  "include": ["**/*.ts"]
+}

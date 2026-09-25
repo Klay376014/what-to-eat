@@ -10,6 +10,7 @@ function meal(overrides: Partial<Meal> & Pick<Meal, "date" | "slot">): Meal {
     tripId: "tokyo",
     label: overrides.slot === "other" ? "Snack" : null,
     position: nextId,
+    startTime: null,
     proposals: 0,
     decidedRestaurant: null,
     ...overrides,

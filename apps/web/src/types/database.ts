@@ -8,6 +8,92 @@ export type Database = {
   };
   public: {
     Tables: {
+      calendar_events: {
+        Row: {
+          calendar_id: string | null;
+          claimed_until: string | null;
+          error: string | null;
+          event_id: string | null;
+          meal_id: string;
+          queued_at: string;
+          revision: number;
+          status: Database["public"]["Enums"]["calendar_sync_status"];
+          synced_at: string | null;
+          trip_id: string;
+        };
+        Insert: {
+          calendar_id?: string | null;
+          claimed_until?: string | null;
+          error?: string | null;
+          event_id?: string | null;
+          meal_id: string;
+          queued_at?: string;
+          revision?: number;
+          status?: Database["public"]["Enums"]["calendar_sync_status"];
+          synced_at?: string | null;
+          trip_id: string;
+        };
+        Update: {
+          calendar_id?: string | null;
+          claimed_until?: string | null;
+          error?: string | null;
+          event_id?: string | null;
+          meal_id?: string;
+          queued_at?: string;
+          revision?: number;
+          status?: Database["public"]["Enums"]["calendar_sync_status"];
+          synced_at?: string | null;
+          trip_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "calendar_events_meal_id_fkey";
+            columns: ["meal_id"];
+            isOneToOne: true;
+            referencedRelation: "meals";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_events_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      calendar_grants: {
+        Row: {
+          calendar_id: string | null;
+          connected_at: string;
+          holder_id: string;
+          refresh_token: string;
+          trip_id: string;
+        };
+        Insert: {
+          calendar_id?: string | null;
+          connected_at?: string;
+          holder_id: string;
+          refresh_token: string;
+          trip_id: string;
+        };
+        Update: {
+          calendar_id?: string | null;
+          connected_at?: string;
+          holder_id?: string;
+          refresh_token?: string;
+          trip_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "calendar_grants_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: true;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       decisions: {
         Row: {
           decided_at: string;
@@ -90,6 +176,7 @@ export type Database = {
           label: string | null;
           position: number;
           slot: Database["public"]["Enums"]["meal_slot"];
+          start_time: string | null;
           trip_id: string;
         };
         Insert: {
@@ -99,6 +186,7 @@ export type Database = {
           label?: string | null;
           position?: never;
           slot: Database["public"]["Enums"]["meal_slot"];
+          start_time?: string | null;
           trip_id: string;
         };
         Update: {
@@ -108,6 +196,7 @@ export type Database = {
           label?: string | null;
           position?: never;
           slot?: Database["public"]["Enums"]["meal_slot"];
+          start_time?: string | null;
           trip_id?: string;
         };
         Relationships: [
@@ -284,9 +373,26 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      calendar_attendees: { Args: { trip_id: string }; Returns: string[] };
       cast_vote: {
         Args: { proposal_id: string; value: number };
         Returns: undefined;
+      };
+      claim_calendar_events: {
+        Args: { trip_id: string };
+        Returns: {
+          date: string;
+          event_id: string | null;
+          label: string | null;
+          lat: number | null;
+          lng: number | null;
+          meal_id: string;
+          note: string | null;
+          place_name: string | null;
+          revision: number;
+          slot: Database["public"]["Enums"]["meal_slot"];
+          start_time: string | null;
+        }[];
       };
       create_invitation: {
         Args: { trip_id: string };
@@ -305,6 +411,16 @@ export type Database = {
           isOneToOne: true;
           isSetofReturn: false;
         };
+      };
+      finish_calendar_event: {
+        Args: {
+          calendar_id: string | null;
+          error: string | null;
+          event_id: string | null;
+          meal_id: string;
+          revision: number;
+        };
+        Returns: undefined;
       };
       create_trip: {
         Args: {
@@ -351,6 +467,7 @@ export type Database = {
       };
     };
     Enums: {
+      calendar_sync_status: "pending" | "synced" | "failed";
       meal_slot: "breakfast" | "lunch" | "dinner" | "other";
       trip_role: "organiser" | "member";
     };
@@ -478,6 +595,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      calendar_sync_status: ["pending", "synced", "failed"],
       meal_slot: ["breakfast", "lunch", "dinner", "other"],
       trip_role: ["organiser", "member"],
     },

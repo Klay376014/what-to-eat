@@ -23,6 +23,11 @@ export interface MealsApi {
    * changes; breakfast, lunch and dinner have no name to change.
    */
   renameMeal(mealId: string, label: string): Promise<Meal>;
+  /**
+   * Sets when the meal starts on the trip's clock ("HH:MM"), or null for its
+   * slot's usual time. The database queues a decided meal's event to follow.
+   */
+  setStartTime(mealId: string, startTime: string | null): Promise<Meal>;
 }
 
 /** The database refused a second breakfast, lunch or dinner on one day. */
@@ -44,7 +49,7 @@ export function useMealsApi(): MealsApi {
 type Client = SupabaseClient<Database>;
 type MealRow = Pick<
   Database["public"]["Tables"]["meals"]["Row"],
-  "id" | "trip_id" | "date" | "slot" | "label" | "position"
+  "id" | "trip_id" | "date" | "slot" | "label" | "position" | "start_time"
 > & {
   /** PostgREST's embedded count: one row, `[{ count }]`. */
   proposals: { count: number }[];
@@ -58,7 +63,7 @@ type MealRow = Pick<
  * decided restaurant's name.
  */
 const MEAL_COLUMNS =
-  "id, trip_id, date, slot, label, position, proposals(count), decisions(proposals(place_name))";
+  "id, trip_id, date, slot, label, position, start_time, proposals(count), decisions(proposals(place_name))";
 /** Postgres unique_violation: the one-breakfast-lunch-dinner-a-day index. */
 const UNIQUE_VIOLATION = "23505";
 
@@ -70,6 +75,8 @@ function toMeal(row: MealRow): Meal {
     slot: row.slot,
     label: row.label,
     position: row.position,
+    // Postgres sends a time as "HH:MM:SS"; the app deals in minutes.
+    startTime: row.start_time?.slice(0, 5) ?? null,
     proposals: row.proposals[0]?.count ?? 0,
     decidedRestaurant: row.decisions?.proposals?.place_name ?? null,
   };
@@ -115,6 +122,18 @@ export function createSupabaseMealsApi(client: Client): MealsApi {
       if (error) throw error;
       const [row] = data;
       if (!row) throw new Error("This meal can no longer be renamed.");
+      return toMeal(row);
+    },
+
+    async setStartTime(mealId, startTime) {
+      const { data, error } = await client
+        .from("meals")
+        .update({ start_time: startTime })
+        .eq("id", mealId)
+        .select(MEAL_COLUMNS);
+      if (error) throw error;
+      const [row] = data;
+      if (!row) throw new Error("This meal's time can no longer be changed.");
       return toMeal(row);
     },
   };

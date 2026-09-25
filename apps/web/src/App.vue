@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, provide, ref } from "vue";
 import AccountMenu, { type AccountUser } from "./account/AccountMenu.vue";
+import { calendarApiKey, createSupabaseCalendarApi } from "./calendar/calendarApi.ts";
 import { signInWithGoogle, signOut, useSession } from "./auth/auth.ts";
 import SignIn from "./auth/SignIn.vue";
 import { createSupabaseMealsApi, mealsApiKey } from "./grid/mealsApi.ts";
@@ -20,6 +21,12 @@ provide(tripsApiKey, createSupabaseTripsApi(supabase));
 provide(mealsApiKey, createSupabaseMealsApi(supabase));
 provide(proposalsApiKey, createSupabaseProposalsApi(supabase));
 provide(membershipApiKey, createSupabaseMembershipApi(supabase));
+provide(
+  calendarApiKey,
+  createSupabaseCalendarApi(supabase, {
+    clientId: import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID,
+  }),
+);
 
 // #6: an invitation captured from the address at startup (main.ts). Used
 // once: after it is spent, a later sign-in as someone else must not reuse it.

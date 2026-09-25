@@ -29,6 +29,11 @@ export interface TripCalendar {
   /** Finishes connecting with Google's answer; null when it failed. */
   connect(returned: Extract<CalendarReturn, { code: string }>): Promise<SyncResult | null>;
   mealSync(mealId: string): MealSync | null;
+  /**
+   * Be a guest on the trip's events, or not (#14), then rewrite the events
+   * already on the calendar. False when the setting could not be changed.
+   */
+  setAttending(attending: boolean): Promise<boolean>;
 }
 
 export const tripCalendarKey: InjectionKey<TripCalendar> = Symbol("TripCalendar");
@@ -83,6 +88,11 @@ export function createTripCalendar(api: CalendarApi, tripId: string): TripCalend
     return running;
   }
 
+  async function followChange() {
+    await refresh();
+    if (status.value?.connection?.ready) await sync();
+  }
+
   return {
     status,
     loadFailure,
@@ -90,9 +100,17 @@ export function createTripCalendar(api: CalendarApi, tripId: string): TripCalend
     failure,
     refresh,
     sync,
-    async followChange() {
-      await refresh();
-      if (status.value?.connection?.ready) await sync();
+    followChange,
+    async setAttending(attending) {
+      failure.value = null;
+      try {
+        await api.setAttending(tripId, attending);
+      } catch (error) {
+        failure.value = `Couldn't change your calendar setting: ${errorMessage(error)}`;
+        return false;
+      }
+      await followChange();
+      return true;
     },
     startConnecting() {
       return api.startConnecting(tripId);

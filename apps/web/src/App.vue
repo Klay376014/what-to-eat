@@ -94,6 +94,7 @@ const leave = () => signOut(supabase);
       :key="session.user.id"
       v-slot="{ openTripId }"
       :token="inviteToken"
+      :email="session.user.email"
       @settled="inviteSettled"
     >
       <TripsHome :open-trip-id="openTripId" />

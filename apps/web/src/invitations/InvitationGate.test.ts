@@ -3,10 +3,11 @@
 // fakes in src/test/, told up front what each token leads to. Nothing here
 // asserts who may join what: whether a token is expired, revoked or valid is
 // the database's call, tested in supabase/tests/database/invitations.test.sql.
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { defineComponent, h } from "vue";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { calendarApiKey } from "../calendar/calendarApi.ts";
+import { buttonByText, fieldByLabel } from "../test/dom.ts";
 import { createFakeCalendarApi } from "../test/fakeCalendarApi.ts";
 import { mealsApiKey } from "../grid/mealsApi.ts";
 import { createFakeMealsApi } from "../test/fakeMealsApi.ts";
@@ -48,9 +49,18 @@ const taipei = aTrip({
   organiserName: "Erin Kao",
 });
 
+/**
+ * Opens the app with the token, as App.vue mounts it, and presses Join (the
+ * default) or leaves the joining screen up (`join: false`).
+ */
 async function openWith(
   token: string | null,
-  options: { links?: Record<string, FakeLink>; myTrips?: Trip[]; alreadyIn?: string[] } = {},
+  options: {
+    links?: Record<string, FakeLink>;
+    myTrips?: Trip[];
+    alreadyIn?: string[];
+    join?: boolean;
+  } = {},
 ) {
   const alice = { userId: "alice", name: "Alice Chen", role: "organiser" as const };
   const tokyoMembers = options.alreadyIn?.includes("tokyo")
@@ -69,7 +79,7 @@ async function openWith(
     () => () =>
       h(
         InvitationGate,
-        { token, onSettled: settled },
+        { token, email: "erin@example.com", onSettled: settled },
         {
           default: ({ openTripId }: { openTripId: string | null }) => h(TripsHome, { openTripId }),
         },
@@ -89,12 +99,82 @@ async function openWith(
     attachTo: document.body,
   });
   await flushPromises();
-  return { wrapper, settled };
+  if (token !== null && options.join !== false) await pressJoin(wrapper);
+  return { wrapper, settled, fake };
+}
+
+async function pressJoin(wrapper: VueWrapper) {
+  await buttonByText(wrapper, "Join trip").trigger("click");
+  await flushPromises();
 }
 
 function openTripName(wrapper: Awaited<ReturnType<typeof openWith>>["wrapper"]) {
   return wrapper.get("article h2").text();
 }
+
+describe("before joining (#14)", () => {
+  test("says plainly that my email will be visible to the others, before I join", async () => {
+    const { wrapper } = await openWith("good", { links: { good: { trip: tokyo } }, join: false });
+
+    expect(wrapper.text()).toContain(
+      "Your email address (erin@example.com) will be visible to the other people in this trip through calendar invitations.",
+    );
+    // Nothing has happened yet: no trip opened, no welcome.
+    expect(wrapper.text()).not.toContain("You've joined");
+    expect(wrapper.find("article h2").exists()).toBe(false);
+    expect(buttonByText(wrapper, "Join trip").exists()).toBe(true);
+  });
+
+  test("joins as a calendar guest unless I say otherwise", async () => {
+    const { wrapper, fake } = await openWith("good", { links: { good: { trip: tokyo } } });
+
+    expect(openTripName(wrapper)).toBe("Tokyo");
+    expect(fake.calendarAttendee("tokyo")).toBe(true);
+  });
+
+  test("I can join without being added as a calendar guest", async () => {
+    const { wrapper, fake } = await openWith("good", {
+      links: { good: { trip: tokyo } },
+      join: false,
+    });
+
+    await fieldByLabel(wrapper, "Add me as a guest on the trip's calendar events").setValue(false);
+    await pressJoin(wrapper);
+
+    expect(openTripName(wrapper)).toBe("Tokyo");
+    expect(fake.calendarAttendee("tokyo")).toBe(false);
+  });
+
+  test("unticking it counts even when I turn out to be in the trip already", async () => {
+    const { wrapper, fake } = await openWith("again", {
+      links: { again: { trip: tokyo } },
+      myTrips: [taipei, tokyo],
+      alreadyIn: ["tokyo"],
+      join: false,
+    });
+
+    await fieldByLabel(wrapper, "Add me as a guest on the trip's calendar events").setValue(false);
+    await pressJoin(wrapper);
+
+    expect(openTripName(wrapper)).toBe("Tokyo");
+    expect(fake.calendarAttendee("tokyo")).toBe(false);
+  });
+
+  test("I can decline, and land on my own trips without joining", async () => {
+    const { wrapper, settled, fake } = await openWith("good", {
+      links: { good: { trip: tokyo } },
+      join: false,
+    });
+
+    await buttonByText(wrapper, "Not now").trigger("click");
+    await flushPromises();
+
+    expect(openTripName(wrapper)).toBe("Taipei");
+    expect(wrapper.text()).not.toContain("You've joined");
+    expect(fake.calendarAttendee("tokyo")).toBeNull();
+    expect(settled).toHaveBeenCalledOnce();
+  });
+});
 
 describe("opening a valid link while signed in", () => {
   test("joins the trip and opens it, instead of the trip the app would open by default", async () => {

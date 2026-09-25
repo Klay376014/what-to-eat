@@ -25,8 +25,9 @@ See `supabase/migrations/20260929090000_calendar.sql` and
   Triggers queue the meal (`status = 'pending'`, `revision + 1`) whenever
   something its event shows changes: the decision is made, changed or
   cleared; the meal's time, day or name changes; the decided restaurant's
-  note or place changes; the trip's timezone changes; or a member joins or
-  leaves (the attendees). The queue does not care whether a calendar exists
+  note or place changes; the trip's timezone changes; or a member joins,
+  leaves, or opts out of or back into being a guest (the attendees, #14).
+  The queue does not care whether a calendar exists
   yet, which is what lets a meal be decided with none.
 - The Edge Function claims a trip's waiting meals (`claim_calendar_events`,
   a five-minute lease), writes each one, and records the result against the
@@ -67,5 +68,11 @@ See `supabase/migrations/20260929090000_calendar.sql` and
   trip. This is the gap a scheduled sweep would close.
 - Handover to a new holder and a lapsed refresh token are #13's. Until then, a
   lapsed token marks every waiting meal as failed with Google's message.
-- Leaving a member off the attendee list is #14's; `calendar_attendees()` is
-  where that goes.
+- A member who opts out (#14, `public.calendar_opt_outs`, per member per
+  trip, readable and changeable by that member alone) is left out by
+  `calendar_attendees()`. Opting out or back in queues the trip's meals like
+  any other attendee change, so events already written are rewritten without
+  them, or with them, on the next pass. The choice can be made at joining,
+  where `join_trip` takes it and stores it with the membership: set a moment
+  later, a pass in between could already have invited them. See
+  `supabase/migrations/20260930090000_calendar_opt_out.sql`.

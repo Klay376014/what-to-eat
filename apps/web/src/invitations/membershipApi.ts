@@ -21,6 +21,11 @@ export interface JoinResult {
   joined: boolean;
 }
 
+export interface JoinOptions {
+  /** Be a guest on the trip's calendar events, which shows others your email. */
+  calendarAttendee: boolean;
+}
+
 export interface Invitation extends InvitationTimes {
   id: string;
   token: string;
@@ -50,8 +55,12 @@ export interface MembershipApi {
   /**
    * Joins the trip the token opens; throws JoinError. `joined` is false when
    * the caller was already a member, so nobody is welcomed twice.
+   *
+   * `calendarAttendee: false` joins without being a guest on the trip's
+   * calendar events (#14); it goes in with the membership. For a member
+   * reopening a link, only `false` counts: it opts them out.
    */
-  joinTrip(token: string): Promise<JoinResult>;
+  joinTrip(token: string, options: JoinOptions): Promise<JoinResult>;
   /** The trip's current members, the organiser first. */
   listMembers(tripId: string): Promise<Member[]>;
   removeMember(tripId: string, userId: string): Promise<void>;
@@ -126,8 +135,10 @@ export function createSupabaseMembershipApi(client: Client): MembershipApi {
   }
 
   return {
-    async joinTrip(token) {
-      const { data, error } = await client.rpc("join_trip", { token }).single();
+    async joinTrip(token, options) {
+      const { data, error } = await client
+        .rpc("join_trip", { token, calendar_attendee: options.calendarAttendee })
+        .single();
       if (error) {
         const reason = error.code === "P0001" ? joinReasons[error.message] : undefined;
         if (reason) throw new JoinError(reason);

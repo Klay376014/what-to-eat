@@ -56,6 +56,8 @@ export function createFakeMembership(seed: {
     ]),
   );
   const joined: Trip[] = [];
+  /** Trips where I asked, at joining, not to be a calendar guest. */
+  const optedOut = new Set<string>();
   let nextId = 1;
 
   function membersOf(tripId: string) {
@@ -74,18 +76,21 @@ export function createFakeMembership(seed: {
   };
 
   const api: MembershipApi = {
-    async joinTrip(token) {
+    async joinTrip(token, options) {
       const link = seed.links?.[token];
       if (!link) throw new JoinError("invalid");
       if ("refused" in link) throw new JoinError(link.refused);
 
       const list = membersOf(link.trip.id);
       if (list.some((m) => m.userId === seed.me.userId)) {
+        if (!options.calendarAttendee) optedOut.add(link.trip.id);
         return { tripId: link.trip.id, joined: false };
       }
       if (list.length >= MEMBER_LIMIT) throw new JoinError("full");
       list.push({ ...seed.me, role: "member" });
       joined.push({ ...link.trip, myRole: "member" });
+      if (!options.calendarAttendee) optedOut.add(link.trip.id);
+      else optedOut.delete(link.trip.id);
       return { tripId: link.trip.id, joined: true };
     },
 
@@ -151,6 +156,14 @@ export function createFakeMembership(seed: {
 
   return {
     api,
+    /**
+     * Whether I am a guest on the trip's calendar events, as chosen when I
+     * joined; null when I am not in the trip.
+     */
+    calendarAttendee(tripId: string): boolean | null {
+      if (!membersOf(tripId).some((m) => m.userId === seed.me.userId)) return null;
+      return !optedOut.has(tripId);
+    },
     tripsApi(base: TripsApi): TripsApi {
       return {
         ...base,

@@ -27,6 +27,11 @@ export interface MealSync {
 export interface TripCalendarStatus {
   connection: CalendarConnection | null;
   meals: MealSync[];
+  /**
+   * Whether the trip's events invite me (#14): true unless I opted out.
+   * Being a guest shows my email address to every other guest.
+   */
+  attending: boolean;
 }
 
 /** What a pass over the trip's calendar queue did. */
@@ -36,6 +41,12 @@ export interface SyncResult {
   written: number;
   failed: number;
 }
+
+/**
+ * The setting that makes the trip's events invite a member, or not (#14),
+ * worded the same where they join and in the trip.
+ */
+export const CALENDAR_GUEST_LABEL = "Add me as a guest on the trip's calendar events";
 
 /** "your", "Kenji's": whose trip calendar it is. */
 export function holderLabel(connection: CalendarConnection): string {

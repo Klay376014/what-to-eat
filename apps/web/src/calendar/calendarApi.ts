@@ -14,7 +14,10 @@ import type { SyncResult, TripCalendarStatus } from "./calendarStatus.ts";
  * (supabase/migrations/20260929090000_calendar.sql), tested there.
  */
 export interface CalendarApi {
-  /** Whether the trip has a calendar and whose, and every queued meal's status. */
+  /**
+   * Whether the trip has a calendar and whose, every queued meal's status,
+   * and whether its events invite me.
+   */
   getStatus(tripId: string): Promise<TripCalendarStatus>;
   /** Sends the member to Google to allow the trip calendar. Leaves the page. */
   startConnecting(tripId: string): Promise<void>;
@@ -28,6 +31,11 @@ export interface CalendarApi {
   ): Promise<SyncResult>;
   /** Writes whatever the trip's calendar is waiting for. */
   sync(tripId: string): Promise<SyncResult>;
+  /**
+   * Be a guest on the trip's events, or not (#14). The database queues the
+   * trip's events to be rewritten; writing them is sync()'s.
+   */
+  setAttending(tripId: string, attending: boolean): Promise<void>;
 }
 
 export const calendarApiKey: InjectionKey<CalendarApi> = Symbol("CalendarApi");
@@ -73,16 +81,24 @@ export function createSupabaseCalendarApi(
   return {
     async getStatus(tripId) {
       const me = await currentUserId();
-      const [grants, events] = await Promise.all([
+      const [grants, events, optOut] = await Promise.all([
         client
           .from("calendar_grants")
           .select("holder_id, calendar_id")
           .eq("trip_id", tripId)
           .maybeSingle(),
         client.from("calendar_events").select("meal_id, status, error").eq("trip_id", tripId),
+        // Only my own row is readable.
+        client
+          .from("calendar_opt_outs")
+          .select("trip_id")
+          .eq("trip_id", tripId)
+          .eq("user_id", me)
+          .maybeSingle(),
       ]);
       if (grants.error) throw grants.error;
       if (events.error) throw events.error;
+      if (optOut.error) throw optOut.error;
 
       let connection: TripCalendarStatus["connection"] = null;
       if (grants.data) {
@@ -102,6 +118,7 @@ export function createSupabaseCalendarApi(
       return {
         connection,
         meals: events.data.map((e) => ({ mealId: e.meal_id, status: e.status, error: e.error })),
+        attending: optOut.data === null,
       };
     },
 
@@ -120,6 +137,15 @@ export function createSupabaseCalendarApi(
 
     sync(tripId) {
       return invoke({ action: "sync", tripId });
+    },
+
+    async setAttending(tripId, attending) {
+      const { error } = attending
+        ? await client.from("calendar_opt_outs").delete().eq("trip_id", tripId)
+        : await client
+            .from("calendar_opt_outs")
+            .upsert({ trip_id: tripId }, { onConflict: "trip_id,user_id", ignoreDuplicates: true });
+      if (error) throw error;
     },
   };
 }

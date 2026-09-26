@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { DigestMeal, DigestProposal } from "./digest.ts";
-import { decisionEmail, digestEmail, mealLink } from "./emails.ts";
+import { decisionEmail, digestEmail, mealLink, nudgeEmail } from "./emails.ts";
 
 const APP = "https://klay376014.github.io/what-to-eat/";
 const trip = { id: "trip-1", name: "Tokyo <3", timezone: "Asia/Tokyo" };
@@ -165,6 +165,48 @@ describe("decisionEmail", () => {
     });
 
     expect(email.text).toContain("A member decided on Ichiran");
+  });
+});
+
+describe("nudgeEmail", () => {
+  const base = {
+    appUrl: APP,
+    trip,
+    meal: dinner,
+    nudgerName: "Bob Lin",
+    placeNames: ["Ichiran", "Afuri"],
+  };
+
+  test("the subject names the trip and the meal", () => {
+    expect(nudgeEmail(base).subject).toBe("Tokyo <3: your vote on Dinner, Sat 3 Oct");
+  });
+
+  test("says who is asking, for which meal, and what is proposed", () => {
+    const email = nudgeEmail(base);
+
+    expect(email.text).toContain(
+      "Bob Lin asked for your vote on Dinner, Sat 3 Oct at 19:00. 2 restaurants are proposed:",
+    );
+    expect(email.text).toContain("- Ichiran\n- Afuri");
+  });
+
+  test("links straight to the meal", () => {
+    const email = nudgeEmail(base);
+
+    expect(email.text).toContain(mealLink(APP, trip.id, dinner));
+    expect(email.html).toContain(escapeAttr(mealLink(APP, trip.id, dinner)));
+  });
+
+  test("what members typed cannot become markup", () => {
+    const email = nudgeEmail({ ...base, placeNames: ["<b>Ramen</b>"] });
+
+    expect(email.html).not.toContain("<b>Ramen</b>");
+    expect(email.html).toContain("&lt;b&gt;Ramen&lt;/b&gt;");
+    expect(email.text).toContain("1 restaurant is proposed:");
+  });
+
+  test("someone whose account is gone is 'a member'", () => {
+    expect(nudgeEmail({ ...base, nudgerName: null }).text).toContain("A member asked");
   });
 });
 

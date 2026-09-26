@@ -11,8 +11,8 @@ import type { Meal } from "../grid/meal.ts";
 import type { IsoDate, Trip } from "../trips/trip.ts";
 import { digestFor, type DigestMeal } from "./digest.ts";
 import { netDecisionChange, type DecisionNotice } from "./decisionNotice.ts";
-import { decisionEmail, digestEmail } from "./emails.ts";
-import { emailRecipients, type TripMemberContact } from "./recipients.ts";
+import { decisionEmail, digestEmail, nudgeEmail } from "./emails.ts";
+import { emailRecipients, nudgeRecipients, type TripMemberContact } from "./recipients.ts";
 
 /** An email for the outbox, to one member. */
 export interface OutgoingEmail {
@@ -74,6 +74,43 @@ export function composeDecisionEmails(input: {
   });
   return emailRecipients(input.members, { except: net.actorId }).map((member) => ({
     dedupeKey: `decision:${lastId}:${member.userId}`,
+    recipientId: member.userId,
+    ...email,
+  }));
+}
+
+/** A meal's proposal as a nudge sees it: its name, and who has voted on it. */
+export interface NudgeProposal {
+  placeName: string;
+  /** Everyone who voted on it, departed members included. */
+  voterIds: readonly string[];
+}
+
+/**
+ * A nudge's emails (#16): to each current member with no vote on the meal
+ * as it stands when composed, never the nudger, and none once the meal is
+ * decided. `members` includes those who left, so a departed nudger is named.
+ */
+export function composeNudgeEmails(input: {
+  appUrl: string;
+  trip: EmailTrip;
+  meal: Pick<Meal, "id" | "date" | "slot" | "label" | "startTime">;
+  nudge: { id: number; nudgedBy: string | null };
+  decided: boolean;
+  proposals: readonly NudgeProposal[];
+  members: readonly TripMemberContact[];
+}): OutgoingEmail[] {
+  if (input.decided) return [];
+  const { nudge } = input;
+  const email = nudgeEmail({
+    appUrl: input.appUrl,
+    trip: input.trip,
+    meal: input.meal,
+    nudgerName: input.members.find((m) => m.userId === nudge.nudgedBy)?.name ?? null,
+    placeNames: input.proposals.map((p) => p.placeName),
+  });
+  return nudgeRecipients(input.members, input.proposals, nudge.nudgedBy).map((member) => ({
+    dedupeKey: `nudge:${nudge.id}:${member.userId}`,
     recipientId: member.userId,
     ...email,
   }));

@@ -1,9 +1,11 @@
 import type { Proposal } from "../proposals/proposal.ts";
 import type { Decision } from "../proposals/decision.ts";
 import type { ResolvedPlace } from "../proposals/mapsLink.ts";
+import { nudgeCooldownLeft, NUDGE_COOLDOWN_MS } from "../proposals/nudge.ts";
 import {
   AlreadyDecidedError,
   NameLockedError,
+  NudgeRefusedError,
   type ProposalsApi,
 } from "../proposals/proposalsApi.ts";
 import type { Vote, VoteValue } from "../proposals/vote.ts";
@@ -18,6 +20,10 @@ export interface FakeProposalsApi extends ProposalsApi {
   castAs(proposalId: string, voter: { id: string; name: string | null }, value: VoteValue): void;
   /** Another member decides the meal behind the screen's back. */
   decideAs(mealId: string, proposalId: string, decider: { id: string; name: string | null }): void;
+  /** Another member nudges the meal behind the screen's back, at `at`. */
+  nudgeAs(mealId: string, at: string): void;
+  /** Every nudge that got through, oldest first. */
+  readonly nudges: readonly { mealId: string; at: string }[];
 }
 
 /**
@@ -26,8 +32,10 @@ export interface FakeProposalsApi extends ProposalsApi {
  * proposals oldest first, stores optional text trimmed or null, keeps one
  * vote per member per proposal, locks a name while it has votes, keeps one
  * decision per meal from the meal's own proposals, refuses to change a
- * locked or decided name, and gives a proposal made with a Maps link that
- * was already resolved that place's coordinates.
+ * locked or decided name, gives a proposal made with a Maps link that
+ * was already resolved that place's coordinates, and refuses a nudge the
+ * database would (#16): within six hours of the meal's last, on a decided
+ * meal, with nothing to vote on, or with everyone else voted.
  *
  * It knows nothing about who may see or edit what. Access control is the
  * database's job and is tested there (supabase/tests/database/), never
@@ -48,6 +56,12 @@ export function createFakeProposalsApi(
      * (trimmed); any other link could not be resolved.
      */
     places?: Record<string, ResolvedPlace>;
+    /** The trip's current members besides me (#16); I am always one. */
+    members?: { userId: string; name: string | null }[];
+    /** When each meal was last nudged, by meal. */
+    lastNudged?: Record<string, string>;
+    /** The server's clock, for the nudge cooldown. */
+    now?: () => Date;
   } = {},
 ): FakeProposalsApi {
   const changed = options.onDecisionChange ?? (() => {});
@@ -61,6 +75,11 @@ export function createFakeProposalsApi(
   let clock = Date.parse("2026-09-24T02:00:00Z");
 
   const decisions = new Map((options.decisions ?? []).map((d) => [d.mealId, { ...d }]));
+  const now = options.now ?? (() => new Date());
+  const members = [{ userId: me.id, name: me.name }, ...(options.members ?? [])];
+  const nudges = Object.entries(options.lastNudged ?? {}).map(([mealId, at]) => ({ mealId, at }));
+  const lastNudge = (mealId: string) =>
+    nudges.filter((n) => n.mealId === mealId).at(-1)?.at ?? null;
   const copy = (p: Proposal): Proposal => ({ ...p, votes: p.votes.map((v) => ({ ...v })) });
 
   /** A decision of the meal with one of its own proposals, as the foreign key insists. */
@@ -174,6 +193,37 @@ export function createFakeProposalsApi(
       resolved.set(sourceUrl.trim(), place);
       return { ...place };
     },
+    async getNudgeState(mealId) {
+      return {
+        meId: me.id,
+        members: members.map((m) => ({ ...m })),
+        lastNudgedAt: lastNudge(mealId),
+      };
+    },
+    async nudge(mealId) {
+      // The database's refusals, in its order (public.nudge_meal).
+      if (decisions.has(mealId)) throw new NudgeRefusedError("decided");
+      const mealProposals = proposals.filter((p) => p.mealId === mealId);
+      if (mealProposals.length === 0) throw new NudgeRefusedError("no-proposals");
+      const voted = new Set(mealProposals.flatMap((p) => p.votes.map((v) => v.voterId)));
+      if (members.every((m) => m.userId === me.id || voted.has(m.userId))) {
+        throw new NudgeRefusedError("everyone-voted");
+      }
+      const last = lastNudge(mealId);
+      const at = now();
+      if (nudgeCooldownLeft(last, at) > 0) {
+        throw new NudgeRefusedError(
+          "cooldown",
+          new Date(Date.parse(last!) + NUDGE_COOLDOWN_MS).toISOString(),
+        );
+      }
+      nudges.push({ mealId, at: at.toISOString() });
+      return at.toISOString();
+    },
+    nudgeAs(mealId, at) {
+      nudges.push({ mealId, at });
+    },
+    nudges,
     decideAs(mealId, proposalId, decider) {
       decisions.set(mealId, makeDecision(mealId, proposalId, decider));
       changed(mealId, true);

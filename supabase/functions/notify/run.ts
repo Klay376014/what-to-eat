@@ -9,6 +9,8 @@
  *                 today: compose each member's digest, record the day.
  *   decisionPass  for each meal with decision notices waiting: compose one
  *                 email per member for where the changes ended up.
+ *   nudgePass     for each nudge waiting (#16): compose one email per member
+ *                 with no vote on the meal, never the nudger.
  *   deliverPass   send what the outbox has due, and record each outcome.
  *
  * What the emails say, and who gets them, is in apps/web/src/notifications.
@@ -17,6 +19,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   composeDecisionEmails,
   composeDigests,
+  composeNudgeEmails,
+  type NudgeProposal,
   type OutgoingEmail,
 } from "../../../apps/web/src/notifications/compose.ts";
 import type { DecisionNotice } from "../../../apps/web/src/notifications/decisionNotice.ts";
@@ -168,6 +172,51 @@ export async function decisionPass(
     } catch (e) {
       // Left claimed; taken up again when the claim runs out.
       console.error(`notify: decision emails for meal ${first.meal_id} failed: ${message(e)}`);
+    }
+  }
+}
+
+/**
+ * Composes the emails for waiting nudges (#16), of one trip or all: to each
+ * current member with no vote on the meal as it now stands, never the nudger.
+ */
+export async function nudgePass(
+  admin: Admin,
+  config: NotifyConfig,
+  tripId: string | null,
+): Promise<void> {
+  const { data: nudges, error } = await admin.rpc("claim_nudges", { only_trip: tripId });
+  if (error) throw error;
+
+  const members = new Map<string, TripMemberContact[]>();
+  for (const nudge of nudges) {
+    try {
+      if (!members.has(nudge.trip_id))
+        members.set(nudge.trip_id, await contacts(admin, nudge.trip_id));
+      const emails = composeNudgeEmails({
+        appUrl: config.appUrl,
+        trip: { id: nudge.trip_id, name: nudge.trip_name },
+        meal: {
+          id: nudge.meal_id,
+          date: nudge.date,
+          slot: nudge.slot,
+          label: nudge.label,
+          startTime: nudge.start_time,
+        },
+        nudge: { id: nudge.id, nudgedBy: nudge.nudged_by },
+        decided: nudge.decided,
+        proposals: nudge.proposals as unknown as NudgeProposal[],
+        members: members.get(nudge.trip_id)!,
+      });
+      const { error: recordError } = await admin.rpc("record_nudge_emails", {
+        nudge_id: nudge.id,
+        trip_id: nudge.trip_id,
+        emails: outboxRows(emails),
+      });
+      if (recordError) throw recordError;
+    } catch (e) {
+      // Left claimed; taken up again when the claim runs out.
+      console.error(`notify: nudge emails for meal ${nudge.meal_id} failed: ${message(e)}`);
     }
   }
 }

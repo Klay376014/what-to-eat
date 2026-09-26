@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useCalendarApi } from "../calendar/calendarApi.ts";
 import { pendingCalendarReturn } from "../calendar/calendarConnect.ts";
 import { createTripCalendar } from "../calendar/useTripCalendar.ts";
+import { clearPendingMealLink, pendingMealLink } from "../grid/mealLink.ts";
 import TripGrid from "../grid/TripGrid.vue";
 import { errorMessage } from "../lib/errors.ts";
 import BaseButton from "../ui/BaseButton.vue";
@@ -27,6 +28,10 @@ const selectedId = ref<string | null>(null);
 const loading = ref(true);
 const failure = ref<string | null>(null);
 const mode = ref<"view" | "create" | "edit">("view");
+// #15: the meal an email's link opens, in the trip it names; and when that
+// is not one of the member's trips, a word on why they landed elsewhere.
+const openMeal = ref<{ tripId: string; day: string; mealId: string } | null>(null);
+const linkNotice = ref<string | null>(null);
 
 const selected = computed(() => trips.value.find((t) => t.id === selectedId.value));
 
@@ -43,10 +48,20 @@ async function load() {
   failure.value = null;
   try {
     trips.value = await api.listTrips();
+    // #15: a link from an email, used once.
+    const link = pendingMealLink();
+    clearPendingMealLink();
+    const linked = link ? trips.value.find((t) => t.id === link.tripId) : undefined;
+    openMeal.value = link && linked ? link : null;
+    linkNotice.value =
+      link && !linked
+        ? "The link you followed is for a trip you're not in, so your usual trip is open instead."
+        : null;
     // #12: back from Google's consent screen, the trip it connects comes first.
     const connecting = pendingCalendarReturn()?.tripId ?? null;
     selectedId.value =
       trips.value.find((t) => t.id === props.openTripId)?.id ??
+      linked?.id ??
       trips.value.find((t) => t.id === connecting)?.id ??
       pickDefaultTrip(trips.value, new Date())?.id ??
       null;
@@ -58,6 +73,11 @@ async function load() {
 }
 
 onMounted(load);
+
+// Opened once: another trip, or coming back to this one, starts as usual.
+watch(selectedId, (id) => {
+  if (openMeal.value && openMeal.value.tripId !== id) openMeal.value = null;
+});
 
 function onCreated(trip: Trip) {
   trips.value = [...trips.value, trip];
@@ -109,6 +129,9 @@ function formatDate(date: string): string {
   </EmptyState>
 
   <div v-else class="stack">
+    <BaseCard v-if="linkNotice"
+      ><p role="status">{{ linkNotice }}</p></BaseCard
+    >
     <BaseCard class="trip-bar">
       <SelectField v-model="selectedId" label="Trip" :disabled="mode === 'edit'">
         <option v-for="trip in trips" :key="trip.id" :value="trip.id">{{ trip.name }}</option>
@@ -152,6 +175,7 @@ function formatDate(date: string): string {
       :key="selected.id"
       :trip="selected"
       :calendar="tripCalendar"
+      :open-meal="openMeal?.tripId === selected.id ? openMeal : null"
     />
     <!-- #6: who is in the trip, invitations, leaving and handing over. -->
     <TripPeople

@@ -8,9 +8,8 @@
  * The app has no router: this reads and replaces these two parameters and
  * leaves the rest of the address (path, other parameters, hash) alone.
  *
- * TODO: opening the trip named in `?trip=` (for digest links) belongs to
- * TripsHome's trip selection; until then the day applies only when the app
- * happens to open on that trip.
+ * A link from an email also names a meal (`&meal=`, mealLink.ts): that one
+ * opens its trip whichever the app would have opened, and the meal with it.
  */
 import type { IsoDate } from "../trips/trip.ts";
 

@@ -16,6 +16,7 @@ import { membershipApiKey, type MembershipApi } from "../invitations/membershipA
 import { createFakeMembership } from "../test/fakeMembershipApi.ts";
 import { aTrip, createFakeTripsApi } from "../test/fakeTripsApi.ts";
 import { buttonByText, fieldByLabel } from "../test/dom.ts";
+import { captureMealLink, clearPendingMealLink, pendingMealLink } from "../grid/mealLink.ts";
 import { tripsApiKey, type TripsApi } from "./tripsApi.ts";
 import TripsHome from "./TripsHome.vue";
 
@@ -139,6 +140,54 @@ describe("with several trips", () => {
       .findAll("option")
       .map((o) => o.text());
     expect(choices).toEqual(["Tokyo", "Taichung"]);
+  });
+});
+
+describe("following a link from an email (#15)", () => {
+  // Trip ids are uuids in a real link.
+  const lisbon = aTrip({
+    id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    name: "Lisbon",
+    startDate: "2026-12-20",
+    endDate: "2026-12-24",
+    timezone: "Europe/Lisbon",
+  });
+  const MEAL = "c0000000-0000-0000-0000-000000000001";
+
+  function follow(tripId: string, day: string) {
+    history.replaceState(null, "", `/?trip=${tripId}&day=${day}&meal=${MEAL}`);
+    captureMealLink();
+  }
+
+  afterEach(() => {
+    clearPendingMealLink();
+    history.replaceState(null, "", "/");
+  });
+
+  test("opens the trip it names on the meal's day, not the trip that would open first", async () => {
+    follow(lisbon.id, "2026-12-22");
+
+    const wrapper = await mountHome(createFakeTripsApi({ trips: [tokyo, lisbon] }));
+
+    expect(currentTripName(wrapper)).toBe("Lisbon");
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toContain("22 Dec");
+  });
+
+  test("is used once", async () => {
+    follow(lisbon.id, "2026-12-22");
+
+    await mountHome(createFakeTripsApi({ trips: [tokyo, lisbon] }));
+
+    expect(pendingMealLink()).toBeNull();
+  });
+
+  test("a link to a trip you are not in says so, and opens as usual", async () => {
+    follow(lisbon.id, "2026-12-22");
+
+    const wrapper = await mountHome(createFakeTripsApi({ trips: [tokyo] }));
+
+    expect(currentTripName(wrapper)).toBe("Tokyo");
+    expect(wrapper.text()).toContain("The link you followed is for a trip you're not in");
   });
 });
 

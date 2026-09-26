@@ -52,7 +52,7 @@ vp run ready      # check + test + build
 
 ## Email（每日摘要與定案通知，#15）
 
-每個旅程在**旅程時區的 08:00** 寄一封每日摘要給目前的成員（列出上一封之後的新提案、以及還在等你投票的餐；沒有新提案就不寄）；餐被定案、改掉或取消時，立刻寄信給其他成員。信由 Edge Function `notify` 透過 [Resend](https://resend.com) 寄出，寄件者 `What to eat <notify@mail.ivy-cudgel.com>`。資料庫每分鐘用 pg_cron + pg_net 叫一次 `notify`（有事要做才叫）；app 在定案後也會直接叫它，讓定案信馬上寄出。設計見 `docs/adr/0009-email-notifications.md`。
+每個旅程在**旅程時區的 08:00** 寄一封每日摘要給目前的成員（列出上一封之後的新提案、以及還在等你投票的餐；旅程的第一封只回看 24 小時；沒有新提案就不寄）；餐被定案、改掉或取消時，立刻寄信給其他成員。信由 Edge Function `notify` 透過 [Resend](https://resend.com) 寄出，寄件者 `What to eat <notify@mail.ivy-cudgel.com>`。資料庫每分鐘用 pg_cron + pg_net 叫一次 `notify`（有事要做才叫）；app 在定案後也會直接叫它，讓定案信馬上寄出。設計見 `docs/adr/0009-email-notifications.md`。
 
 API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出現在 log。
 

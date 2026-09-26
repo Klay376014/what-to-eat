@@ -58,13 +58,23 @@ describe("digestFor", () => {
     expect(digest?.newProposals).toEqual([{ meal: dinner, proposals: [onTime] }]);
   });
 
-  test("the first digest of a trip counts every proposal as new", () => {
+  test("a trip's first digest looks back 24 hours from its cut-off, no further", () => {
+    // The cut-off is 23:00 UTC on 2 Oct, so the window opens at 23:00 on 1 Oct.
     const ancient = aProposal({ id: "ancient", createdAt: "2026-01-01T00:00:00Z" });
-    const dinner = aMeal({ id: "dinner", proposals: [ancient] });
+    const justOutside = aProposal({ id: "just-outside", createdAt: "2026-10-01T22:59:59Z" });
+    const justInside = aProposal({ id: "just-inside", createdAt: "2026-10-01T23:00:00Z" });
+    const dinner = aMeal({ id: "dinner", proposals: [ancient, justOutside, justInside] });
 
     const digest = digestFor({ ...window, since: null, meals: [dinner] });
 
-    expect(digest?.newProposals).toEqual([{ meal: dinner, proposals: [ancient] }]);
+    expect(digest?.newProposals).toEqual([{ meal: dinner, proposals: [justInside] }]);
+  });
+
+  test("a trip whose only proposals are older than a day starts with no digest", () => {
+    const old = aProposal({ id: "old", createdAt: "2026-09-20T00:00:00Z" });
+    const dinner = aMeal({ id: "dinner", proposals: [old] });
+
+    expect(digestFor({ ...window, since: null, meals: [dinner] })).toBeNull();
   });
 
   test("nothing new since the last digest sends nothing, even with meals awaiting a vote", () => {

@@ -41,7 +41,10 @@ minute.** See `supabase/migrations/20261001120000_email_notifications.sql`,
 - **Digest runs.** `digest_runs` has one row per trip per local day. A pass
   works out which trips are due (08:00 passed on the trip's clock, no run
   for that day, trip not ended: `dueDigestDay`), composes each member's
-  digest from the proposals made since the previous run's cut-off, and
+  digest from the proposals made since the previous run's cut-off (a trip's
+  first digest looks back only 24 hours, `FIRST_DIGEST_LOOKBACK_MS`, so a
+  trip planned for weeks before this shipped is not sent weeks of old
+  proposals as new), and
   records the day and its emails in one call (`record_digest`). Only the
   first pass to record a day does; a day with nothing new is still recorded,
   with no emails. The cut-off is 30 seconds before the pass, so a proposal

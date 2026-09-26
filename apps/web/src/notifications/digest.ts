@@ -4,6 +4,10 @@
  * with nothing new is not sent at all; an email that only repeats yesterday's
  * reminder is how a digest gets filtered into a folder nobody reads.
  *
+ * A trip's first digest (no digest before it, as when a trip is new or this
+ * ships to trips planned for weeks) looks back one day from its cut-off,
+ * not to the start of the trip: weeks-old proposals are not news.
+ *
  * Pure, and imported by the notify Edge Function.
  */
 import { mealStart } from "../calendar/mealTime.ts";
@@ -40,11 +44,17 @@ export interface Digest<M extends DigestMeal = DigestMeal> {
   awaitingVote: M[];
 }
 
+/** How far back a trip's first digest looks, from its cut-off. */
+export const FIRST_DIGEST_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
 export interface DigestInput<M extends DigestMeal> {
   recipientId: string;
   /** The day the digest is for, on the trip's clock. Earlier days are over. */
   today: IsoDate;
-  /** Where the last digest was cut off, or null when this is the trip's first. */
+  /**
+   * Where the last digest was cut off, or null when this is the trip's
+   * first: then it starts FIRST_DIGEST_LOOKBACK_MS before `until`.
+   */
   since: Date | null;
   /** Where this one is cut off: a proposal from then on waits for the next. */
   until: Date;
@@ -56,9 +66,10 @@ export function digestFor<M extends DigestMeal>(input: DigestInput<M>): Digest<M
   const { recipientId, today, since, until } = input;
   const meals = input.meals.filter((m) => m.date >= today).sort(byWhenItHappens);
 
+  const from = since?.getTime() ?? until.getTime() - FIRST_DIGEST_LOOKBACK_MS;
   const isNew = (p: DigestProposal) => {
     const made = new Date(p.createdAt).getTime();
-    return (since === null || made >= since.getTime()) && made < until.getTime();
+    return made >= from && made < until.getTime();
   };
 
   const newProposals = meals

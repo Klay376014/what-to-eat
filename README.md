@@ -105,6 +105,8 @@ API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出�
 
    每日摘要只在旅程時區過了 08:00、而且上一封之後有別人的新提案時才寄。
 
+**保留期間**：寄出、放棄或取消的信（含內容）只保留 **30 天**，每天 03:00 UTC 由 pg_cron 的 `prune-emails` 工作刪掉；已寄出的定案紀錄和舊的摘要紀錄也一樣（每個旅程最新的一筆摘要紀錄一定留著，所以刪除不會讓任何信重寄）。還沒寄出的信不會被刪。要改天數：寫一個新 migration 重新定義 `private.email_retention()`（`supabase/migrations/20261001140000_email_cleanup.sql`）。不需要額外設定，`vp run db:push` 就會排好。
+
 ## CI
 
 - `.github/workflows/ci.yml`：PR 與 push 到 `main` 時跑 `vp check`、`vp run -r test`，並在 runner 上啟動本機 Supabase、套用 migrations、跑 `supabase test db`（pgTAP，測試放在 `supabase/tests/database/*.test.sql`）。本機沒有 Docker，資料庫測試只在 CI 跑。

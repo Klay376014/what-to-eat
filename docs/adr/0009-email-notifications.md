@@ -83,6 +83,20 @@ minute.** See `supabase/migrations/20261001120000_email_notifications.sql`,
   examined offers. Sending is from `mail.ivy-cudgel.com`, a subdomain, so
   its reputation and DNS records are kept apart from the root domain's.
 
+- **Cleanup.** A second pg_cron job, daily at 03:00 UTC, runs
+  `private.prune_email_records()` (`20261001140000_email_cleanup.sql`),
+  deleting in batches what is older than `private.email_retention()`, the
+  one place the retention is set: **30 days**. It deletes emails that were
+  sent, failed or cancelled (never a pending one), decision notices whose
+  emails were composed (never a waiting one), and digest runs, except each
+  trip's latest. Nothing deleted can be composed or sent again: a decision
+  key names a processed notice, which is never claimed again; a digest key
+  names a day, and only today's digest is composed; and the latest run is
+  what says which day a trip last had and where its next digest starts, so
+  keeping it means no past day looks due and no trip looks as if it never
+  had a digest (which would give it a first digest). Only the schedule can
+  run it; no client or Edge Function has the grant.
+
 ## Reversing part of ADR 0006
 
 ADR 0006 chose not to use pg_cron + pg_net for the calendar, because it
@@ -126,6 +140,9 @@ The calendar keeps ADR 0006's design. The same schedule could now carry the
   fixed.
 - Most minutes nothing leaves the database; `kick_notify` itself is a few
   index lookups. Edge Function invocations stay far below the free tier.
-- `email_outbox` keeps every email sent, with its content, for good. At a
-  few trips of up to eight people this is small; pruning old rows can be
-  added when it matters.
+- What each member was emailed, content included, is kept for 30 days and
+  then deleted; after that there is no record of an email beyond Resend's
+  own logs. Changing the period is one line in `private.email_retention()`
+  (a new migration that replaces the function). A pending email or waiting
+  notice is never deleted, however old; one stuck that long is a fault to
+  look at, not to tidy away.

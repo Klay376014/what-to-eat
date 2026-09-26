@@ -176,7 +176,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select m.user_id, u.email, p.display_name, m.left_at
+  select m.user_id, u.email::text, p.display_name, m.left_at
   from public.trip_members m
   join auth.users u on u.id = m.user_id
   left join public.profiles p on p.id = m.user_id
@@ -405,7 +405,7 @@ begin
     )
     returning o.id, o.dedupe_key, o.recipient_id, o.subject, o.body_text, o.body_html, o.created_at
   )
-  select c.id, c.dedupe_key, u.email, c.subject, c.body_text, c.body_html
+  select c.id, c.dedupe_key, u.email::text, c.subject, c.body_text, c.body_html
   from claimed c
   join auth.users u on u.id = c.recipient_id
   order by c.created_at;

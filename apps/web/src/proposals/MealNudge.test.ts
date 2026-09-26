@@ -172,6 +172,15 @@ describe("when there is nobody to nudge", () => {
     expect(wrapper.find('[aria-label="Nudge"]').exists()).toBe(false);
   });
 
+  test("a trip of one has nobody to nudge and says nothing about it", async () => {
+    const api = createFakeProposalsApi({
+      proposals: [aProposal({ mealId: MEAL, placeName: "Afuri" })],
+    });
+    const wrapper = await mountProposals(api);
+
+    expect(wrapper.find('[aria-label="Nudge"]').exists()).toBe(false);
+  });
+
   test("nor does a meal with nothing to vote on", async () => {
     const api = createFakeProposalsApi({ members: [bob] });
     const wrapper = await mountProposals(api);

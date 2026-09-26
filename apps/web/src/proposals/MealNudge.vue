@@ -97,7 +97,12 @@ async function nudge() {
 
 <template>
   <section
-    v-if="offer && !(offer.kind === 'unavailable' && offer.reason !== 'everyone-voted')"
+    v-if="
+      offer &&
+      state &&
+      state.members.length > 1 &&
+      !(offer.kind === 'unavailable' && offer.reason !== 'everyone-voted')
+    "
     class="nudge stack-sm"
     aria-label="Nudge"
   >

@@ -38,6 +38,10 @@ export interface ProposalsApi {
   /**
    * Decides the meal with one of its proposals. Throws AlreadyDecidedError
    * when someone else decided it first.
+   *
+   * Deciding, changing and clearing each tell the trip's members by email
+   * (#15): the database records the change, and this then asks the notify
+   * Edge Function to send it now rather than within the minute.
    */
   decide(mealId: string, proposalId: string): Promise<Decision>;
   /** Changes the meal's decision to another of its proposals. */
@@ -122,6 +126,15 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
     if (error) throw error;
     if (!data.session) throw new Error("Not signed in");
     return data.session.user.id;
+  }
+
+  /**
+   * Asks the notify Edge Function to email the meal's decision change now.
+   * Not awaited, and a failure is not the member's: the database has the
+   * change, and the scheduled pass sends it within the minute anyway.
+   */
+  function askToEmail(mealId: string): void {
+    client.functions.invoke("notify", { body: { mealId } }).catch(() => undefined);
   }
 
   /**
@@ -295,6 +308,7 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
         .single();
       if (error?.code === UNIQUE_VIOLATION) throw new AlreadyDecidedError();
       if (error) throw error;
+      askToEmail(mealId);
       return toDecision(data);
     },
 
@@ -308,6 +322,7 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
       if (error) throw error;
       const [row] = data;
       if (!row) throw new Error("This decision can no longer be changed.");
+      askToEmail(mealId);
       return toDecision(row);
     },
 
@@ -319,6 +334,7 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
         .select("meal_id");
       if (error) throw error;
       if (data.length === 0) throw new Error("This decision can no longer be cleared.");
+      askToEmail(mealId);
     },
 
     async resolveMapsLink(sourceUrl) {

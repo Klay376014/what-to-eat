@@ -30,6 +30,8 @@ const props = defineProps<{
   trip: Trip;
   /** The trip's calendar, when the page shares it with others; else the grid makes its own. */
   calendar?: TripCalendarState;
+  /** A meal to open, from an email's link (#15): its day is shown with it open. */
+  openMeal?: { day: IsoDate; mealId: string } | null;
 }>();
 
 const api = useMealsApi();
@@ -51,7 +53,7 @@ const failure = ref<string | null>(null);
  */
 const today = computed(() => dateIn(props.trip.timezone, new Date()));
 // The grid is keyed on the trip, so the trip id is fixed for its lifetime.
-const requested = readDayParam(props.trip.id);
+const requested = props.openMeal?.day ?? readDayParam(props.trip.id);
 const selected = ref<IsoDate | null>(null);
 /** Days of an undated trip someone went to, before any meal is on them. */
 const visited = ref<IsoDate[]>(requested ? [requested] : []);
@@ -77,7 +79,11 @@ async function load() {
   failure.value = null;
   try {
     meals.value = await api.listMeals(props.trip.id);
-    selected.value ??= defaultDay(props.trip, tabs.value, today.value, requested);
+    if (selected.value === null) {
+      selected.value = defaultDay(props.trip, tabs.value, today.value, requested);
+      // An email's link: the day it opened goes in the address, as if chosen.
+      if (props.openMeal) writeDayParam(props.trip.id, selected.value);
+    }
   } catch (error) {
     failure.value = `Couldn't load the meals: ${errorMessage(error)}`;
   } finally {
@@ -197,6 +203,7 @@ const add: AddMeal = async (meal) => {
           :set-time="setTime"
           :time-zone="trip.timezone"
           :organiser="trip.myRole === 'organiser'"
+          :open-meal-id="openMeal?.day === activeDay ? openMeal.mealId : null"
           @proposal-count="updateProposalCount"
           @decided="updateDecision"
         />

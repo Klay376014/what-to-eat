@@ -423,6 +423,12 @@ verify_jwt = false
 [functions.maps-link]
 verify_jwt = false
 
+# #15: the digest and decision emails. Called by pg_cron with a shared secret
+# (no JWT) and by the app with a member's session, which it checks itself
+# (supabase/functions/notify/index.ts).
+[functions.notify]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

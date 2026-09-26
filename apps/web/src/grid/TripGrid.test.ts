@@ -49,9 +49,10 @@ async function mountGrid(
   api: FakeMealsApi = createFakeMealsApi(),
   proposals: FakeProposalsApi = createFakeProposalsApi(),
   calendar: FakeCalendarApi = createFakeCalendarApi(),
+  more: { openMeal?: { day: string; mealId: string } | null } = {},
 ) {
   const wrapper = mount(TripGrid, {
-    props: { trip },
+    props: { trip, ...more },
     global: {
       provide: {
         [mealsApiKey as symbol]: api,
@@ -272,6 +273,47 @@ describe("the day tabs", () => {
     const wrapper = await mountGrid(long);
 
     expect(tabs(wrapper)).toHaveLength(14);
+  });
+});
+
+describe("a link straight to a meal (#15)", () => {
+  test("opens the meal's day with its details open", async () => {
+    const lunch = aMeal({ id: "lunch-4", tripId: "tokyo", date: "2026-10-04", slot: "lunch" });
+    const proposals = createFakeProposalsApi();
+    proposals.seed(aProposal({ mealId: "lunch-4", placeName: "Afuri" }));
+
+    const wrapper = await mountGrid(
+      tokyo,
+      createFakeMealsApi({ meals: [lunch] }),
+      proposals,
+      createFakeCalendarApi(),
+      { openMeal: { day: "2026-10-04", mealId: "lunch-4" } },
+    );
+    await flushPromises();
+
+    expect(selectedTab(wrapper).text()).toContain("4 Oct");
+    expect(slotButton(wrapper, "Lunch").attributes("aria-expanded")).toBe("true");
+    expect(slotButton(wrapper, "Dinner").attributes("aria-expanded")).toBe("false");
+    expect(panel(wrapper).text()).toContain("Afuri");
+  });
+
+  test("the day stays in the address, as if chosen", async () => {
+    const lunch = aMeal({ id: "lunch-4", tripId: "tokyo", date: "2026-10-04", slot: "lunch" });
+
+    await mountGrid(tokyo, createFakeMealsApi({ meals: [lunch] }), undefined, undefined, {
+      openMeal: { day: "2026-10-04", mealId: "lunch-4" },
+    });
+
+    expect(new URLSearchParams(location.search).get("day")).toBe("2026-10-04");
+  });
+
+  test("a meal that no longer exists still opens its day, with nothing open", async () => {
+    const wrapper = await mountGrid(tokyo, createFakeMealsApi(), undefined, undefined, {
+      openMeal: { day: "2026-10-04", mealId: "gone" },
+    });
+
+    expect(selectedTab(wrapper).text()).toContain("4 Oct");
+    expect(panel(wrapper).findAll('[aria-expanded="true"]')).toHaveLength(0);
   });
 });
 

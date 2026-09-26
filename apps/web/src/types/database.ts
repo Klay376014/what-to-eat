@@ -463,6 +463,81 @@ export type Database = {
           start_time: string | null;
         }[];
       };
+      // #15: the notify Edge Function's side of the email tables (service_role only).
+      claim_decision_notices: {
+        Args: { only_trip?: string | null };
+        Returns: {
+          actor_id: string | null;
+          date: string;
+          id: number;
+          label: string | null;
+          meal_id: string;
+          place_name: string | null;
+          previous_place_name: string | null;
+          previous_proposal_id: string | null;
+          proposal_id: string | null;
+          slot: Database["public"]["Enums"]["meal_slot"];
+          start_time: string | null;
+          trip_id: string;
+          trip_name: string;
+        }[];
+      };
+      claim_emails: {
+        Args: { max_count?: number; only_trip?: string | null };
+        Returns: {
+          body_html: string;
+          body_text: string;
+          dedupe_key: string;
+          id: string;
+          subject: string;
+          to_email: string;
+        }[];
+      };
+      digest_meals: {
+        Args: { from_date: string; trip_id: string };
+        Returns: {
+          date: string;
+          decided: boolean;
+          id: string;
+          label: string | null;
+          position: number;
+          proposals: Json;
+          slot: Database["public"]["Enums"]["meal_slot"];
+          start_time: string | null;
+        }[];
+      };
+      digest_trips: {
+        Args: never;
+        Returns: {
+          end_date: string | null;
+          last_cut_off: string | null;
+          last_date: string | null;
+          name: string;
+          timezone: string;
+          trip_id: string;
+        }[];
+      };
+      finish_email: {
+        Args: { error: string | null; id: string; provider_id: string | null; retry: boolean };
+        Returns: undefined;
+      };
+      record_decision_emails: {
+        Args: { emails: Json; notice_ids: number[]; trip_id: string };
+        Returns: undefined;
+      };
+      record_digest: {
+        Args: { cut_off: string; emails: Json; local_date: string; trip_id: string };
+        Returns: boolean;
+      };
+      trip_contacts: {
+        Args: { trip_id: string };
+        Returns: {
+          email: string | null;
+          left_at: string | null;
+          name: string | null;
+          user_id: string;
+        }[];
+      };
       create_invitation: {
         Args: { trip_id: string };
         Returns: {
@@ -552,6 +627,7 @@ export type Database = {
     };
     Enums: {
       calendar_sync_status: "pending" | "synced" | "failed";
+      email_status: "pending" | "sent" | "failed" | "cancelled";
       meal_slot: "breakfast" | "lunch" | "dinner" | "other";
       trip_role: "organiser" | "member";
     };
@@ -680,6 +756,7 @@ export const Constants = {
   public: {
     Enums: {
       calendar_sync_status: ["pending", "synced", "failed"],
+      email_status: ["pending", "sent", "failed", "cancelled"],
       meal_slot: ["breakfast", "lunch", "dinner", "other"],
       trip_role: ["organiser", "member"],
     },

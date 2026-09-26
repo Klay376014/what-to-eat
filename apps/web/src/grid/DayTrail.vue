@@ -15,7 +15,7 @@
  * Each meal starts at its slot's usual time, on the trip's clock, unless
  * someone sets its own (#12); that is the time its calendar event is for.
  */
-import { nextTick, ref, useId, useTemplateRef, watch } from "vue";
+import { nextTick, onMounted, ref, useId, useTemplateRef, watch } from "vue";
 import { zoneCity } from "../calendar/calendarEvent.ts";
 import { DEFAULT_START, mealStart } from "../calendar/mealTime.ts";
 import { errorMessage } from "../lib/errors.ts";
@@ -51,6 +51,8 @@ const props = defineProps<{
   timeZone: string;
   /** Whether the signed-in member organises the trip. */
   organiser: boolean;
+  /** A meal to open as the trail first shows, from an email's link (#15). */
+  openMealId?: string | null;
 }>();
 const emit = defineEmits<{
   /** A meal's proposal count, as its details last loaded or changed it. */
@@ -60,7 +62,15 @@ const emit = defineEmits<{
 }>();
 
 const id = useId();
-const expanded = ref<string | null>(null);
+const expanded = ref<string | null>(
+  props.trail.find((entry) => entry.meal !== null && entry.meal.id === props.openMealId)?.key ??
+    null,
+);
+// The meal an email's link opened is brought into view.
+onMounted(() => {
+  if (expanded.value === null) return;
+  document.getElementById(`${id}-${expanded.value}`)?.scrollIntoView?.({ block: "start" });
+});
 const busy = ref(false);
 const failure = ref<string | null>(null);
 const notice = ref<string | null>(null);

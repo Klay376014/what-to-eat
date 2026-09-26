@@ -50,6 +50,61 @@ vp run ready      # check + test + build
 
 不需要任何 secret 或 API key：`vp run db:push` 套用 migration，`vp run functions:deploy` 部署 `maps-link`（`calendar` 也要重新部署，日曆事件的連結改用原本貼上的連結）。要整個關掉的話，刪掉這個函式（`supabase functions delete maps-link`）就好，app 會當成每個連結都查不到。
 
+## Email（每日摘要與定案通知，#15）
+
+每個旅程在**旅程時區的 08:00** 寄一封每日摘要給目前的成員（列出上一封之後的新提案、以及還在等你投票的餐；沒有新提案就不寄）；餐被定案、改掉或取消時，立刻寄信給其他成員。信由 Edge Function `notify` 透過 [Resend](https://resend.com) 寄出，寄件者 `What to eat <notify@mail.ivy-cudgel.com>`。資料庫每分鐘用 pg_cron + pg_net 叫一次 `notify`（有事要做才叫）；app 在定案後也會直接叫它，讓定案信馬上寄出。設計見 `docs/adr/0009-email-notifications.md`。
+
+API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出現在 log。
+
+1. **Resend**：註冊 → Domains → Add Domain：`mail.ivy-cudgel.com`。依畫面在 `ivy-cudgel.com` 的 DNS 加上它列出的紀錄（值以 Resend 畫面為準，通常是）：
+   - `MX`　`send.mail`　→ `feedback-smtp.<region>.amazonses.com`（priority 10）
+   - `TXT`　`send.mail`　→ `v=spf1 include:amazonses.com ~all`
+   - `TXT`　`resend._domainkey.mail`　→ Resend 給的 DKIM 公鑰
+   - （建議）`TXT`　`_dmarc.mail`　→ `v=DMARC1; p=none;`
+
+   等 Resend 顯示 Verified。驗證完成前，Resend 只肯寄給你自己的帳號信箱。然後 API Keys → Create API Key（權限選 **Sending access**，限定這個 domain）。
+
+2. **Edge Function 的 secrets**。`NOTIFY_SECRET` 是資料庫叫 `notify` 時帶的共用密碼，自己產生一個：
+
+   ```bash
+   openssl rand -hex 32   # 記下來，第 4 步還要用
+   supabase secrets set RESEND_API_KEY=re_... NOTIFY_SECRET=<上面那串>
+   ```
+
+   `EMAIL_FROM`（預設 `What to eat <notify@mail.ivy-cudgel.com>`）和 `APP_URL`（預設 `https://klay376014.github.io/what-to-eat/app/`，信裡的連結都指向它）要改才設。不想讓 key 留在 shell history 的話，寫進一個暫存檔再用 `supabase secrets set --env-file <檔案>`，用完刪掉。
+
+3. `vp run db:push` 套用 migration（會啟用 `pg_cron`、`pg_net`，並排好每分鐘的 `notify` 工作），`vp run functions:deploy` 部署 `notify`（`verify_jwt = false`：資料庫的呼叫沒有 JWT，由函式自己檢查密碼或 session）。
+
+4. **一次性：把函式的網址和密碼放進 Vault**（Supabase dashboard → SQL Editor 執行；`<project-ref>` 換成專案 ref，密碼和第 2 步的 `NOTIFY_SECRET` 相同）：
+
+   ```sql
+   select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/notify', 'notify_url');
+   select vault.create_secret('<NOTIFY_SECRET 的值>', 'notify_secret');
+   ```
+
+   在這兩個 secret 存在之前，排程什麼都不做（本機和 CI 也是如此）。之後要換密碼：先 `supabase secrets set NOTIFY_SECRET=<新的>`，再
+
+   ```sql
+   select vault.update_secret((select id from vault.secrets where name = 'notify_secret'), '<新的>');
+   ```
+
+5. **試寄**：在 app 裡定案一個餐，其他成員（用另一個帳號，或先邀請自己的第二個信箱）幾秒內會收到信。也可以直接叫一次排程會做的事：
+
+   ```bash
+   curl -X POST https://<project-ref>.supabase.co/functions/v1/notify \
+     -H "x-notify-secret: <NOTIFY_SECRET>" -H "Content-Type: application/json" -d '{}'
+   ```
+
+   回應是 `{"digests": 旅程數, "sent": 寄出封數}`。查寄送狀況（SQL Editor）：
+
+   ```sql
+   select kind, status, attempts, last_error, created_at from public.email_outbox order by created_at desc limit 20;
+   select status, return_message, start_time from cron.job_run_details order by start_time desc limit 10;
+   select status_code, error_msg, created from net._http_response order by created desc limit 10;
+   ```
+
+   每日摘要只在旅程時區過了 08:00、而且上一封之後有別人的新提案時才寄。
+
 ## CI
 
 - `.github/workflows/ci.yml`：PR 與 push 到 `main` 時跑 `vp check`、`vp run -r test`，並在 runner 上啟動本機 Supabase、套用 migrations、跑 `supabase test db`（pgTAP，測試放在 `supabase/tests/database/*.test.sql`）。本機沒有 Docker，資料庫測試只在 CI 跑。

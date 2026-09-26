@@ -58,7 +58,7 @@ minute.** See `supabase/migrations/20261001120000_email_notifications.sql`,
   Resend's `Idempotency-Key`, which Resend honours for 24 hours, so a send
   whose answer was lost and is repeated is still one email. Retries back
   off 1, 2, 4, 8, 16 minutes and stop after six tries, well inside that
-  window. The nudge (#16) adds its own kind and keys to the same outbox and
+  window. The nudge (#16, ADR 0010) adds its own kind and keys to the same outbox and
   reuses `deliverPass` and `sendEmail`.
 - **Recipients** are the trip's current members by the address on their
   account (`trip_contacts`), never `calendar_attendees()`. The outbox

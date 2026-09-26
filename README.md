@@ -50,9 +50,9 @@ vp run ready      # check + test + build
 
 不需要任何 secret 或 API key：`vp run db:push` 套用 migration，`vp run functions:deploy` 部署 `maps-link`（`calendar` 也要重新部署，日曆事件的連結改用原本貼上的連結）。要整個關掉的話，刪掉這個函式（`supabase functions delete maps-link`）就好，app 會當成每個連結都查不到。
 
-## Email（每日摘要與定案通知，#15）
+## Email（每日摘要、定案通知與催票，#15、#16）
 
-每個旅程在**旅程時區的 08:00** 寄一封每日摘要給目前的成員（列出上一封之後的新提案、以及還在等你投票的餐；旅程的第一封只回看 24 小時；沒有新提案就不寄）；餐被定案、改掉或取消時，立刻寄信給其他成員。信由 Edge Function `notify` 透過 [Resend](https://resend.com) 寄出，寄件者 `What to eat <notify@mail.ivy-cudgel.com>`。資料庫每分鐘用 pg_cron + pg_net 叫一次 `notify`（有事要做才叫）；app 在定案後也會直接叫它，讓定案信馬上寄出。設計見 `docs/adr/0009-email-notifications.md`。
+每個旅程在**旅程時區的 08:00** 寄一封每日摘要給目前的成員（列出上一封之後的新提案、以及還在等你投票的餐；旅程的第一封只回看 24 小時；沒有新提案就不寄）；餐被定案、改掉或取消時，立刻寄信給其他成員。任何成員也可以在一個還沒定案的餐上按「Nudge them」**催票**：只寄給這個餐一票都還沒投的目前成員（不含按的人），同一個餐每 **6 小時**只能催一次（資料庫 `public.nudge_meal` 把關）。信由 Edge Function `notify` 透過 [Resend](https://resend.com) 寄出，寄件者 `What to eat <notify@mail.ivy-cudgel.com>`。資料庫每分鐘用 pg_cron + pg_net 叫一次 `notify`（有事要做才叫）；app 在定案或催票後也會直接叫它，讓信馬上寄出。設計見 `docs/adr/0009-email-notifications.md` 和 `docs/adr/0010-nudges.md`。
 
 API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出現在 log。
 
@@ -105,7 +105,7 @@ API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出�
 
    每日摘要只在旅程時區過了 08:00、而且上一封之後有別人的新提案時才寄。
 
-**保留期間**：寄出、放棄或取消的信（含內容）只保留 **30 天**，每天 03:00 UTC 由 pg_cron 的 `prune-emails` 工作刪掉；已寄出的定案紀錄和舊的摘要紀錄也一樣（每個旅程最新的一筆摘要紀錄一定留著，所以刪除不會讓任何信重寄）。還沒寄出的信不會被刪。要改天數：寫一個新 migration 重新定義 `private.email_retention()`（`supabase/migrations/20261001140000_email_cleanup.sql`）。不需要額外設定，`vp run db:push` 就會排好。
+**保留期間**：寄出、放棄或取消的信（含內容）只保留 **30 天**，每天 03:00 UTC 由 pg_cron 的 `prune-emails` 工作刪掉；已寄出的定案紀錄、催票紀錄和舊的摘要紀錄也一樣（每個旅程最新的一筆摘要紀錄一定留著，所以刪除不會讓任何信重寄）。還沒寄出的信不會被刪。要改天數：寫一個新 migration 重新定義 `private.email_retention()`（`supabase/migrations/20261001140000_email_cleanup.sql`）。不需要額外設定，`vp run db:push` 就會排好。
 
 ## CI
 

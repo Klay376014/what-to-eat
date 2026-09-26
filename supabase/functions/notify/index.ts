@@ -1,16 +1,16 @@
-// The notify Edge Function (#15; ADR 0009): the daily digests and the
-// decision emails, sent through Resend. Two callers:
+// The notify Edge Function (#15; ADR 0009): the daily digests, the decision
+// emails and the nudges (#16; ADR 0010), sent through Resend. Two callers:
 //
 //   the database  pg_cron, once a minute when there is work
 //                 (20261001130000_notify_schedule.sql), with the shared secret
 //                 in `x-notify-secret`. Runs every pass: digests due, decision
-//                 emails waiting, and whatever the outbox has due.
+//                 and nudge emails waiting, and whatever the outbox has due.
 //   a member      the app, straight after deciding, changing or clearing a
-//                 meal, signed with their session: `{ "mealId": "..." }`.
-//                 Composes and sends that meal's trip's decision emails now
-//                 rather than within the minute. It can
-//                 only hurry what is already waiting; it composes nothing a
-//                 member could choose.
+//                 meal, or nudging it, signed with their session:
+//                 `{ "mealId": "..." }`. Composes and sends that meal's
+//                 trip's waiting decision and nudge emails now rather than
+//                 within the minute. It can only hurry what is already
+//                 waiting; it composes nothing a member could choose.
 //
 // verify_jwt is off (supabase/config.toml): the database's call carries no
 // JWT, and the member's is checked here, as in the calendar function.
@@ -24,7 +24,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../../../apps/web/src/types/database.ts";
-import { decisionPass, deliverPass, digestPass, type NotifyConfig } from "./run.ts";
+import { decisionPass, deliverPass, digestPass, nudgePass, type NotifyConfig } from "./run.ts";
 
 const DEFAULT_FROM = "What to eat <notify@mail.ivy-cudgel.com>";
 const DEFAULT_APP_URL = "https://klay376014.github.io/what-to-eat/app/";
@@ -128,6 +128,7 @@ Deno.serve(async (req) => {
       // Each pass on its own: one failing does not stop the others.
       const digests = await attempt("digests", () => digestPass(admin, settings, new Date()));
       await attempt("decision emails", () => decisionPass(admin, settings, null));
+      await attempt("nudge emails", () => nudgePass(admin, settings, null));
       const sent = await attempt("delivery", () => deliverPass(admin, settings, null));
       return json({ digests, sent });
     }
@@ -139,7 +140,8 @@ Deno.serve(async (req) => {
     const tripId = await memberTripOfMeal(req, body.mealId);
     if (!tripId) return json({ error: "You're not in this trip." }, 403);
     const settings = config();
-    await decisionPass(admin, settings, tripId);
+    await attempt("decision emails", () => decisionPass(admin, settings, tripId));
+    await attempt("nudge emails", () => nudgePass(admin, settings, tripId));
     const sent = await deliverPass(admin, settings, tripId);
     return json({ sent });
   } catch (e) {

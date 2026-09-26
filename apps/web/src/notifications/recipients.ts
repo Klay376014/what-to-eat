@@ -1,5 +1,5 @@
 /*
- * Who a trip's emails go to (#15, and the nudge in #16 narrows it further).
+ * Who a trip's emails go to (#15), and who a nudge reaches (#16).
  *
  * The trip's current members, by the address on their account. This is not
  * the calendar's attendee list (calendar_attendees(), #14): opting out of
@@ -8,6 +8,8 @@
  *
  * Pure, and imported by the notify Edge Function.
  */
+import { membersWithoutVote } from "../proposals/vote.ts";
+
 export interface TripMemberContact {
   userId: string;
   /** The address on their account, or null when it has none. */
@@ -35,4 +37,20 @@ export function emailRecipients<M extends TripMemberContact>(
     out.push(member as EmailRecipient<M>);
   }
   return out;
+}
+
+/**
+ * Who a nudge on a meal reaches (#16): the current members with an address
+ * and no vote on any of the meal's proposals, less the member nudging. A
+ * departed member's vote stays on its proposal but makes nobody a voter.
+ */
+export function nudgeRecipients<M extends TripMemberContact>(
+  members: readonly M[],
+  mealProposals: readonly { voterIds: readonly string[] }[],
+  nudgerId: string | null,
+): EmailRecipient<M>[] {
+  return membersWithoutVote(
+    emailRecipients(members, { except: nudgerId }),
+    mealProposals.map((p) => ({ votes: p.voterIds.map((voterId) => ({ voterId })) })),
+  );
 }

@@ -25,10 +25,14 @@
  * calendar yet, on it, or why writing it failed. Every change to the
  * decision asks the trip's calendar to follow.
  *
- * Which buttons appear is for convenience only. Who may propose, edit, vote
- * and decide, and the name locks, are enforced by the database
- * (supabase/migrations/20260926090000_proposals.sql, 20260927090000_votes.sql,
- * 20260928090000_decisions.sql).
+ * Below the vote summary, a member can nudge the people who have not voted
+ * (#16, MealNudge.vue), at most once per meal every six hours.
+ *
+ * Which buttons appear is for convenience only. Who may propose, edit, vote,
+ * decide and nudge, the name locks and the nudge cooldown, are enforced by
+ * the database (supabase/migrations/20260926090000_proposals.sql,
+ * 20260927090000_votes.sql, 20260928090000_decisions.sql,
+ * 20261002090000_nudges.sql).
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { mealSyncNote } from "../calendar/calendarStatus.ts";
@@ -54,6 +58,7 @@ import {
 } from "./proposal.ts";
 import { canChangeDecision, deciderLabel, type Decision } from "./decision.ts";
 import { shortLink } from "./mapsLink.ts";
+import MealNudge from "./MealNudge.vue";
 import { AlreadyDecidedError, NameLockedError, useProposalsApi } from "./proposalsApi.ts";
 import { myVote, tally, unvotedByMe, voterLabel, type Vote, type VoteValue } from "./vote.ts";
 
@@ -524,6 +529,8 @@ async function clearDecision() {
       <p v-if="decideFailure" role="alert" class="error">{{ decideFailure }}</p>
 
       <p v-if="proposals.length > 0" class="vote-summary">{{ voteSummary }}</p>
+
+      <MealNudge :meal-id="mealId" :decided="decision !== null" :proposals="proposals" />
 
       <ul v-if="proposals.length > 0" class="proposals">
         <li v-for="proposal in proposals" :key="proposal.id" class="proposal stack-sm">

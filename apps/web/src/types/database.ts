@@ -277,6 +277,27 @@ export type Database = {
           },
         ];
       };
+      // #16: members read who nudged which meal when; only nudge_meal writes.
+      meal_nudges: {
+        Row: {
+          created_at: string;
+          id: number;
+          meal_id: string;
+          nudged_by: string | null;
+          trip_id: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "meal_nudges_meal_id_fkey";
+            columns: ["meal_id"];
+            isOneToOne: false;
+            referencedRelation: "meals";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       profiles: {
         Row: {
           avatar_url: string | null;
@@ -482,6 +503,23 @@ export type Database = {
           trip_name: string;
         }[];
       };
+      // #16: nudges waiting to be emailed (service_role only).
+      claim_nudges: {
+        Args: { only_trip?: string | null };
+        Returns: {
+          date: string;
+          decided: boolean;
+          id: number;
+          label: string | null;
+          meal_id: string;
+          nudged_by: string | null;
+          proposals: Json;
+          slot: Database["public"]["Enums"]["meal_slot"];
+          start_time: string | null;
+          trip_id: string;
+          trip_name: string;
+        }[];
+      };
       claim_emails: {
         Args: { max_count?: number; only_trip?: string | null };
         Returns: {
@@ -525,6 +563,12 @@ export type Database = {
         Args: { emails: Json; notice_ids: number[]; trip_id: string };
         Returns: undefined;
       };
+      record_nudge_emails: {
+        Args: { emails: Json; nudge_id: number; trip_id: string };
+        Returns: undefined;
+      };
+      // #16: any current member nudges a meal; returns when (authenticated only).
+      nudge_meal: { Args: { meal_id: string }; Returns: string };
       record_digest: {
         Args: { cut_off: string; emails: Json; local_date: string; trip_id: string };
         Returns: boolean;

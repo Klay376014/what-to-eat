@@ -1,6 +1,6 @@
 /*
- * The app's emails (#15): the daily digest and the decision notice. The
- * nudge (#16) is built from the same parts.
+ * The app's emails: the daily digest and the decision notice (#15), and the
+ * nudge (#16), all built from the same parts.
  *
  * Each email has a plain-text part and an HTML part. The HTML is one narrow
  * column with inline styles, scaled to the screen and with large tap
@@ -153,6 +153,43 @@ export function decisionEmail(input: {
     heading: trip.name,
     subheading: title,
     body: mealBlock({ title: sentence, href, lines: [], action: "Open the meal" }),
+  });
+  return { subject, text, html };
+}
+
+/** A member asking those who have not voted on a meal to vote (#16). */
+export function nudgeEmail(input: {
+  appUrl: string;
+  trip: EmailTrip;
+  meal: NamedMeal;
+  /** Who nudged; null when their account is gone. */
+  nudgerName: string | null;
+  /** The meal's proposals, by name. */
+  placeNames: readonly string[];
+}): Email {
+  const { appUrl, trip, meal, placeNames } = input;
+  const title = mealTitle(meal);
+  const href = mealLink(appUrl, trip.id, meal);
+  const sentence =
+    `${input.nudgerName ?? "A member"} asked for your vote on ${title} at ${mealStart(meal)}. ` +
+    `${plural(placeNames.length, "restaurant is", "restaurants are")} proposed:`;
+  const subject = `${trip.name}: your vote on ${title}`;
+
+  const text = [
+    `${trip.name}`,
+    "",
+    sentence,
+    ...placeNames.map((name) => `- ${name}`),
+    "",
+    href,
+    "",
+    FOOTER_TEXT,
+  ].join("\n");
+  const html = layout({
+    preheader: sentence,
+    heading: trip.name,
+    subheading: title,
+    body: mealBlock({ title: sentence, href, lines: [...placeNames], action: "Vote" }),
   });
   return { subject, text, html };
 }

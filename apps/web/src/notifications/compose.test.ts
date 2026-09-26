@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { composeDecisionEmails, composeDigests } from "./compose.ts";
+import { composeDecisionEmails, composeDigests, composeNudgeEmails } from "./compose.ts";
 import type { DigestMeal } from "./digest.ts";
 import type { DecisionNotice } from "./decisionNotice.ts";
 import type { TripMemberContact } from "./recipients.ts";
@@ -208,5 +208,45 @@ describe("composeDecisionEmails", () => {
     });
     expect(cleared.map((e) => e.dedupeKey)).toEqual(["decision:42:alice"]);
     expect(cleared[0]!.subject).toBe("Tokyo: Dinner, Sat 3 Oct is undecided again");
+  });
+});
+
+describe("composeNudgeEmails", () => {
+  const meal = {
+    id: "dinner",
+    date: "2026-10-03",
+    slot: "dinner" as const,
+    label: null,
+    startTime: null,
+  };
+  const base = {
+    appUrl: APP,
+    trip: tokyo,
+    meal,
+    nudge: { id: 7, nudgedBy: "alice" },
+    decided: false,
+    proposals: [
+      { placeName: "Ichiran", voterIds: ["bob", "dave"] },
+      { placeName: "Afuri", voterIds: [] },
+    ],
+    members: [alice, bob, carol, dave],
+  };
+
+  test("only current members with no vote, never the nudger, each under the nudge's key", () => {
+    const emails = composeNudgeEmails(base);
+
+    expect(emails.map((e) => [e.recipientId, e.dedupeKey])).toEqual([["carol", "nudge:7:carol"]]);
+    expect(emails[0]!.subject).toBe("Tokyo: your vote on Dinner, Sat 3 Oct");
+    expect(emails[0]!.text).toContain("ALICE asked for your vote");
+  });
+
+  test("a meal decided since the nudge sends nothing", () => {
+    expect(composeNudgeEmails({ ...base, decided: true })).toEqual([]);
+  });
+
+  test("the same nudge composed twice has the same keys, so a retry cannot send it twice", () => {
+    expect(composeNudgeEmails(base).map((e) => e.dedupeKey)).toEqual(
+      composeNudgeEmails(base).map((e) => e.dedupeKey),
+    );
   });
 });

@@ -3,6 +3,7 @@ import { inject, type InjectionKey } from "vue";
 import type { Database } from "../types/database.ts";
 import type { Decision } from "./decision.ts";
 import type { ResolvedPlace } from "./mapsLink.ts";
+import type { NudgeUnavailable } from "./nudge.ts";
 import type { NewProposal, Proposal, ProposalEdit } from "./proposal.ts";
 import type { Vote, VoteValue } from "./vote.ts";
 
@@ -55,6 +56,46 @@ export interface ProposalsApi {
    * from the same resolution. A convenience only: it never throws.
    */
   resolveMapsLink(sourceUrl: string): Promise<ResolvedPlace | null>;
+  /** What the meal's nudge button needs (#16): the trip's members and the last nudge. */
+  getNudgeState(mealId: string): Promise<NudgeState>;
+  /**
+   * Nudges the members with no vote on the meal (#16) and returns when. The
+   * database refuses, with NudgeRefusedError, a nudge within six hours of
+   * the meal's last, on a decided meal, on one with nothing to vote on, or
+   * where everyone else has voted. Like deciding, this then asks the notify
+   * Edge Function to send the emails now rather than within the minute.
+   */
+  nudge(mealId: string): Promise<string>;
+}
+
+export interface NudgeState {
+  /** The signed-in member. */
+  meId: string;
+  /** The trip's current members, the signed-in one included. */
+  members: { userId: string; name: string | null }[];
+  /** When the meal was last nudged, by anyone, or null when never. */
+  lastNudgedAt: string | null;
+}
+
+/** Why the database refused a nudge. */
+export class NudgeRefusedError extends Error {
+  readonly reason: NudgeUnavailable | "cooldown";
+  /** With "cooldown": when the meal can next be nudged. */
+  readonly availableAt: string | null;
+
+  constructor(reason: NudgeUnavailable | "cooldown", availableAt: string | null = null) {
+    super(
+      {
+        cooldown: "This meal was nudged in the last six hours.",
+        decided: "This meal is decided, so there's nobody to nudge.",
+        "no-proposals": "There's nothing to vote on yet.",
+        "everyone-voted": "Everyone else has voted on this meal.",
+      }[reason],
+    );
+    this.name = "NudgeRefusedError";
+    this.reason = reason;
+    this.availableAt = availableAt;
+  }
 }
 
 /**
@@ -113,6 +154,13 @@ type DecisionRow = Pick<
 >;
 
 const DECISION_COLUMNS = "meal_id, proposal_id, decided_by, decided_at";
+/** nudge_meal's refusals (P0001), by message. */
+const NUDGE_REFUSALS: Record<string, NudgeUnavailable | "cooldown"> = {
+  nudge_cooldown: "cooldown",
+  meal_decided: "decided",
+  nothing_to_vote_on: "no-proposals",
+  everyone_voted: "everyone-voted",
+};
 /** Postgres unique_violation: the meal already has a decision. */
 const UNIQUE_VIOLATION = "23505";
 
@@ -129,9 +177,9 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
   }
 
   /**
-   * Asks the notify Edge Function to email the meal's decision change now.
-   * Not awaited, and a failure is not the member's: the database has the
-   * change, and the scheduled pass sends it within the minute anyway.
+   * Asks the notify Edge Function to email the meal's decision change, or
+   * its nudge, now. Not awaited, and a failure is not the member's: the
+   * database has it, and the scheduled pass sends it within the minute anyway.
    */
   function askToEmail(mealId: string): void {
     client.functions.invoke("notify", { body: { mealId } }).catch(() => undefined);
@@ -348,6 +396,57 @@ export function createSupabaseProposalsApi(client: Client): ProposalsApi {
       } catch {
         return null;
       }
+    },
+
+    async getNudgeState(mealId) {
+      const me = await currentUserId();
+      const { data: meal, error: mealError } = await client
+        .from("meals")
+        .select("trip_id")
+        .eq("id", mealId)
+        .single();
+      if (mealError) throw mealError;
+      const [membersResult, nudgeResult] = await Promise.all([
+        client
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", meal.trip_id)
+          .is("left_at", null)
+          .order("joined_at", { ascending: true }),
+        client
+          .from("meal_nudges")
+          .select("created_at")
+          .eq("meal_id", mealId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      if (membersResult.error) throw membersResult.error;
+      if (nudgeResult.error) throw nudgeResult.error;
+      const ids = membersResult.data.map((m) => m.user_id);
+      const names = new Map<string, string | null>();
+      if (ids.length > 0) {
+        const { data, error } = await client
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", ids);
+        if (error) throw error;
+        for (const p of data) names.set(p.id, p.display_name);
+      }
+      return {
+        meId: me,
+        members: ids.map((userId) => ({ userId, name: names.get(userId) ?? null })),
+        lastNudgedAt: nudgeResult.data?.created_at ?? null,
+      };
+    },
+
+    async nudge(mealId) {
+      const { data, error } = await client.rpc("nudge_meal", { meal_id: mealId });
+      const refusal = error?.code === "P0001" ? NUDGE_REFUSALS[error.message] : undefined;
+      if (refusal) throw new NudgeRefusedError(refusal, error?.details || null);
+      if (error) throw error;
+      askToEmail(mealId);
+      return data;
     },
   };
 }

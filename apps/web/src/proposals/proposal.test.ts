@@ -36,19 +36,56 @@ describe("validateMapsLink", () => {
   test("a Maps short link or a full Maps address is fine", () => {
     expect(validateMapsLink("https://maps.app.goo.gl/AbCdEf123?g_st=ic")).toBeNull();
     expect(validateMapsLink(" https://www.google.co.jp/maps/place/Tsuta ")).toBeNull();
+    expect(validateMapsLink("https://www.google.com.tw/maps/place/Din+Tai+Fung")).toBeNull();
+    expect(validateMapsLink("https://google.com/maps?q=Afuri")).toBeNull();
+    expect(validateMapsLink("https://maps.google.com/?cid=123456789")).toBeNull();
+    expect(validateMapsLink("https://maps.google.de/maps?q=Afuri")).toBeNull();
+    expect(validateMapsLink("HTTPS://MAPS.APP.GOO.GL/AbCdEf123")).toBeNull();
   });
 
+  const fix =
+    "Paste a link from Google Maps, starting with https://. Other links can go in the note.";
+
   test("something that is not a web link is refused, with how to fix it", () => {
-    const fix = "Paste the whole link, starting with https://";
     expect(validateMapsLink("maps.app.goo.gl/AbCdEf123")).toBe(fix);
     expect(validateMapsLink("javascript:alert(1)")).toBe(fix);
     expect(validateMapsLink("Afuri Ramen")).toBe(fix);
   });
 
   test("a link missing the // after https: is refused, as the database would refuse it", () => {
-    const fix = "Paste the whole link, starting with https://";
     expect(validateMapsLink("https:maps.app.goo.gl/AbCdEf123")).toBe(fix);
     expect(validateMapsLink("https:/maps.app.goo.gl/AbCdEf123")).toBe(fix);
+  });
+
+  test("a link to anywhere but Google Maps is refused: it belongs in the note", () => {
+    for (const link of [
+      "https://afuri.example/ebisu",
+      "https://www.instagram.com/afuri_ramen/",
+      "https://www.google.com/search?q=afuri",
+      "https://www.google.com/url?q=https://evil.example",
+      "https://docs.google.com/maps",
+      "https://www.google.com/mapsevil",
+      "https://goo.gl/AbCdEf123",
+    ]) {
+      expect(validateMapsLink(link), link).toBe(fix);
+    }
+  });
+
+  test("a Maps look-alike is refused: only the host right after https:// counts", () => {
+    for (const link of [
+      "http://maps.app.goo.gl/AbCdEf123",
+      "https://maps.app.goo.gl.evil.example/AbCdEf123",
+      "https://maps.google.com.evil.example/",
+      "https://www.google.com.evil.example/maps",
+      "https://evilgoogle.com/maps",
+      "https://maps.google.com@evil.example/",
+      "https://user@maps.google.com/",
+      "https://maps.google.com:8443/",
+      "https://www.google.com\\@evil.example/maps",
+      "https://maps.app.goo.gl/",
+    ]) {
+      expect(validateMapsLink(link), link).toBe(fix);
+    }
   });
 
   test("an absurdly long link is refused", () => {
@@ -93,8 +130,14 @@ describe("mapsUrl", () => {
     ).toBe("https://www.google.co.jp/maps/place/Tsuta/@35.7,139.7,17z");
   });
 
-  test("a link that is not http(s) is never linked to", () => {
-    for (const sourceUrl of ["javascript:alert(1)", "data:text/html,hi", "not a link"]) {
+  test("a link that is not Google Maps is never linked to, whatever was stored before", () => {
+    for (const sourceUrl of [
+      "javascript:alert(1)",
+      "data:text/html,hi",
+      "not a link",
+      "https://evil.example/",
+      "http://maps.app.goo.gl/AbCdEf123",
+    ]) {
       expect(mapsUrl({ ...typed, placeName: "Afuri", sourceUrl }), sourceUrl).toBe(
         "https://www.google.com/maps/search/?api=1&query=Afuri",
       );

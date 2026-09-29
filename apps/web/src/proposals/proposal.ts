@@ -62,18 +62,42 @@ export function validateMapsLink(link: string): string | null {
   const trimmed = link.trim();
   if (trimmed.length === 0) return null;
   if (trimmed.length > MAX_LINK_LENGTH) return "That link is too long to keep.";
-  // The database insists on the "//" too; `new URL` alone accepts "https:host".
-  if (!/^https?:\/\//i.test(trimmed)) return "Paste the whole link, starting with https://";
-  let url: URL;
-  try {
-    url = new URL(trimmed);
-  } catch {
-    return "Paste the whole link, starting with https://";
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    return "Paste the whole link, starting with https://";
+  if (!isMapsLink(trimmed)) {
+    return "Paste a link from Google Maps, starting with https://. Other links can go in the note.";
   }
   return null;
+}
+
+/**
+ * A Google Maps address, the same one the database's check on
+ * proposals.source_url accepts (20261003090000_maps_only_links.sql):
+ *
+ * - a share sheet's short link, https://maps.app.goo.gl/<id>;
+ * - https://maps.google.<country>/…;
+ * - https://www.google.<country>/maps…, with or without the www.
+ *
+ * The host is spelled out right after https:// and must end there, so
+ * nothing (a user name, a port, another domain around it) can make the
+ * browser go anywhere else. Anything else a member wants to share goes in
+ * the note, where it is only text.
+ */
+const MAPS_LINK = new RegExp(
+  "^https://(" +
+    "maps\\.app\\.goo\\.gl/[a-z0-9_-]+([?#]|$)" +
+    "|maps\\.google\\.(com|co\\.[a-z]{2}|com\\.[a-z]{2}|[a-z]{2})([/?#]|$)" +
+    "|(www\\.)?google\\.(com|co\\.[a-z]{2}|com\\.[a-z]{2}|[a-z]{2})/maps([/?#]|$)" +
+    ")",
+  "i",
+);
+
+function isMapsLink(text: string): boolean {
+  if (!MAPS_LINK.test(text)) return false;
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" && !url.username && !url.password && url.port === "";
+  } catch {
+    return false;
+  }
 }
 
 export function validateNote(note: string): string | null {
@@ -97,28 +121,18 @@ export function optionalText(value: string): string | null {
  * reaches. The official Maps URLs scheme can only name a place by a Places
  * `place_id`, which short links do not give, so from coordinates it could
  * only drop a pin (docs/adr/0007-maps-link-resolution.md). The pasted link is
- * a member's input, so only an http(s) one is ever linked to; the database
- * and the form accept nothing else either.
+ * a member's input, so only a Google Maps one is ever linked to; the
+ * database and the form accept nothing else either.
  *
  * Without a link, the official, key-free scheme
  * (https://developers.google.com/maps/documentation/urls/get-started)
  * searches for the name, or for the coordinates when there are any.
  */
 export function mapsUrl(place: Pick<Proposal, "placeName" | "sourceUrl" | "lat" | "lng">): string {
-  if (place.sourceUrl !== null && isWebLink(place.sourceUrl)) return place.sourceUrl;
+  if (place.sourceUrl !== null && isMapsLink(place.sourceUrl)) return place.sourceUrl;
   const query =
     place.lat !== null && place.lng !== null ? `${place.lat},${place.lng}` : place.placeName;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-}
-
-function isWebLink(text: string): boolean {
-  if (!/^https?:\/\//i.test(text)) return false;
-  try {
-    const { protocol } = new URL(text);
-    return protocol === "https:" || protocol === "http:";
-  } catch {
-    return false;
-  }
 }
 
 /**

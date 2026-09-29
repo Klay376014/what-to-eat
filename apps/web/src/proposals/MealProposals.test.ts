@@ -148,15 +148,17 @@ describe("proposing a restaurant", () => {
     expect(await api.listProposals(MEAL)).toEqual([]);
   });
 
-  test("a link that is not a link is pointed out, and leaving it out still proposes", async () => {
+  test("a link that is not a Google Maps link is pointed out, and leaving it out still proposes", async () => {
     const api = createFakeProposalsApi();
     const wrapper = await mountProposals(api);
 
-    await propose(wrapper, { link: "maps.app.goo.gl/AbCdEf123", name: "Afuri" });
+    await propose(wrapper, { link: "https://afuri.example/ebisu", name: "Afuri" });
     expect(fieldByLabel(wrapper, "Google Maps link (optional)").attributes("aria-invalid")).toBe(
       "true",
     );
-    expect(wrapper.text()).toContain("Paste the whole link, starting with https://");
+    expect(wrapper.text()).toContain(
+      "Paste a link from Google Maps, starting with https://. Other links can go in the note.",
+    );
     expect(await api.listProposals(MEAL)).toEqual([]);
 
     await fieldByLabel(wrapper, "Google Maps link (optional)").setValue("");

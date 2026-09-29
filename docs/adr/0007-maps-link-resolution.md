@@ -74,12 +74,20 @@ See `supabase/functions/maps-link/`, `apps/web/src/proposals/mapsLink.ts` and
   This knowingly relaxes #9's "Outbound links use the official Maps URLs
   scheme" and the PRD's "All outbound links use the official, key-free Maps
   URLs scheme". That rule was there so a pasted link could never send anyone
-  elsewhere. What remains of it: the link is a member's own input, the
-  database and the form accept only `http(s)` links, `mapsUrl` links to
-  nothing else, and it opens in a new tab with `noopener noreferrer`. The
-  form does not insist the link is Google's, so a member could paste any web
-  address and the group would be sent there; within a trip of people who
-  invited each other, that is accepted.
+  elsewhere. What remains of it: the database and the form accept only a
+  Google Maps link (`https://maps.app.goo.gl/<id>`,
+  `https://maps.google.<country>/…` or `https://(www.)google.<country>/maps…`,
+  the host ending right where it is spelled out), `mapsUrl` links to nothing
+  else, and it opens in a new tab with `noopener noreferrer`.
+
+  At first any `http(s)` link was accepted, on the grounds that a trip is
+  people who invited each other. That was reversed
+  (`20261003090000_maps_only_links.sql`): a link under a Google Maps label
+  that can lead anywhere is one nobody can judge before clicking, and a
+  malicious one looks like the rest. Other links (the restaurant's site, a
+  review) go in the note, which is only shown as text. Links kept before
+  that were not Maps links were dropped, and their decided meals' calendar
+  events rewritten.
 
 ## Considered and not chosen
 

@@ -147,7 +147,8 @@ async function cancelProposing() {
 
 // Filling the name from a pasted Maps short link (#9) ---------------------------
 
-const LINK_HINT = "Share the place from Google Maps and paste the link.";
+const LINK_HINT =
+  "Share the place from Google Maps and paste the link. Other links go in the note.";
 /**
  * Each link looked up while the form is open, by the link as pasted
  * (trimmed): a lookup under way is shared, and a place found is kept for

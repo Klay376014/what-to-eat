@@ -14,6 +14,7 @@
  *
  * Each meal starts at its slot's usual time, on the trip's clock, unless
  * someone sets its own (#12); that is the time its calendar event is for.
+ * A decided meal shows that time on the trail itself (#39).
  */
 import { nextTick, onMounted, ref, useId, useTemplateRef, watch } from "vue";
 import { zoneCity } from "../calendar/calendarEvent.ts";
@@ -280,8 +281,12 @@ async function submitOther() {
         :aria-controls="`${id}-${entry.key}`"
         @click="toggle(entry)"
       >
-        <!-- The trailing space keeps the name apart from the state when read out. -->
+        <!-- The trailing spaces keep the name, time and state apart when read out. -->
         <span class="slot-name">{{ `${entry.name} ` }}</span>
+        <!-- A decided meal says when it is without being opened (#39). -->
+        <span v-if="entry.meal && entry.state.state === 'decided'" class="slot-time">
+          <span class="visually-hidden">at </span>{{ `${mealStart(entry.meal)} ` }}
+        </span>
         <MealSlotMarker :slot="entry.state" />
       </button>
 
@@ -458,12 +463,12 @@ async function submitOther() {
   background: var(--route);
 }
 
-/* The whole stop is the button: its name, and the marker carrying the state. */
+/* The whole stop is the button: its name, a decided meal's time beside it,
+   and the marker carrying the state across the full width below. */
 .slot {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-1);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-2);
   width: 100%;
   min-height: 44px;
   padding: 0;
@@ -478,6 +483,18 @@ async function submitOther() {
 
 .slot-name {
   font-weight: var(--label-weight);
+}
+
+.slot > :not(.slot-name, .slot-time) {
+  grid-column: 1 / -1;
+}
+
+/* Tabular figures keep the times lined up down the trail. Positioned so the
+   hidden "at" stays inside it, as in MealSlotMarker. */
+.slot-time {
+  position: relative;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .details {

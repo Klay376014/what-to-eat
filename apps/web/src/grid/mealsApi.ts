@@ -11,7 +11,10 @@ import type { Meal, NewMeal } from "./meal.ts";
  * security; that is tested in supabase/tests/database/meals_rls.test.sql.
  */
 export interface MealsApi {
-  /** Every meal of the trip, in date order and, within a day, in the order added. */
+  /**
+   * Every meal of the trip, in date order and, within a day, in the order
+   * added. The trail orders a day by each meal's place (tripDays.ts).
+   */
   listMeals(tripId: string): Promise<Meal[]>;
   /**
    * Adds a meal. Throws SlotTakenError when the day already has that
@@ -28,6 +31,21 @@ export interface MealsApi {
    * slot's usual time. The database queues a decided meal's event to follow.
    */
   setStartTime(mealId: string, startTime: string | null): Promise<Meal>;
+  /**
+   * Moves an "other" meal one stop up or down its day's trail (#40), past
+   * the next meal that way: another "other" meal, whose place it takes, or a
+   * breakfast, lunch or dinner, added or not. Returns the new place of each
+   * meal that moved. Throws at either end of the day.
+   */
+  moveMeal(mealId: string, direction: MoveDirection): Promise<MealPlace[]>;
+}
+
+export type MoveDirection = "up" | "down";
+
+/** Where a moved meal now sits on its day's trail. */
+export interface MealPlace {
+  id: string;
+  place: number;
 }
 
 /** The database refused a second breakfast, lunch or dinner on one day. */
@@ -49,7 +67,7 @@ export function useMealsApi(): MealsApi {
 type Client = SupabaseClient<Database>;
 type MealRow = Pick<
   Database["public"]["Tables"]["meals"]["Row"],
-  "id" | "trip_id" | "date" | "slot" | "label" | "position" | "start_time"
+  "id" | "trip_id" | "date" | "slot" | "label" | "position" | "place" | "start_time"
 > & {
   /** PostgREST's embedded count: one row, `[{ count }]`. */
   proposals: { count: number }[];
@@ -63,7 +81,12 @@ type MealRow = Pick<
  * decided restaurant's name.
  */
 const MEAL_COLUMNS =
-  "id, trip_id, date, slot, label, position, start_time, proposals(count), decisions(proposals(place_name))";
+  "id, trip_id, date, slot, label, position, place, start_time, proposals(count), decisions(proposals(place_name))";
+/** What move_meal's refusals mean, for the person who pressed the button. */
+const MOVE_REFUSALS: Record<string, string> = {
+  meal_at_end: "It is already at that end of the day.",
+  meal_not_movable: "Breakfast, lunch and dinner stay where they are.",
+};
 /** Postgres unique_violation: the one-breakfast-lunch-dinner-a-day index. */
 const UNIQUE_VIOLATION = "23505";
 
@@ -75,6 +98,7 @@ function toMeal(row: MealRow): Meal {
     slot: row.slot,
     label: row.label,
     position: row.position,
+    place: row.place,
     // Postgres sends a time as "HH:MM:SS"; the app deals in minutes.
     startTime: row.start_time?.slice(0, 5) ?? null,
     proposals: row.proposals[0]?.count ?? 0,
@@ -135,6 +159,14 @@ export function createSupabaseMealsApi(client: Client): MealsApi {
       const [row] = data;
       if (!row) throw new Error("This meal's time can no longer be changed.");
       return toMeal(row);
+    },
+
+    async moveMeal(mealId, direction) {
+      const { data, error } = await client.rpc("move_meal", { meal_id: mealId, direction });
+      const refusal = error?.code === "P0001" ? MOVE_REFUSALS[error.message] : undefined;
+      if (refusal) throw new Error(refusal);
+      if (error) throw error;
+      return data;
     },
   };
 }

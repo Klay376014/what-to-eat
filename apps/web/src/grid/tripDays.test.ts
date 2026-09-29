@@ -1,15 +1,18 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { Meal } from "./meal.ts";
+import { FIXED_PLACES, type Meal } from "./meal.ts";
 import { dayTrail, daySummary, defaultDay, tripDates, type DayTab } from "./tripDays.ts";
 
 let nextId = 1;
 function meal(overrides: Partial<Meal> & Pick<Meal, "date" | "slot">): Meal {
   const id = `m${nextId++}`;
+  const position = overrides.position ?? nextId;
   return {
     id,
     tripId: "tokyo",
     label: overrides.slot === "other" ? "Snack" : null,
-    position: nextId,
+    position,
+    // As the database places a new "other" meal: after dinner, after those before it.
+    place: overrides.slot === "other" ? FIXED_PLACES.dinner + position : null,
     startTime: null,
     proposals: 0,
     decidedRestaurant: null,
@@ -111,6 +114,25 @@ describe("dayTrail", () => {
         .map((e) => e.name);
     expect(names(meals)).toEqual(["Tea", "Snack", "Airport"]);
     expect(names([...meals].reverse())).toEqual(["Tea", "Snack", "Airport"]);
+  });
+
+  test("an other meal moved up the day sits where it was put, around breakfast, lunch and dinner (#40)", () => {
+    const meals = [
+      meal({ date: "2026-10-02", slot: "other", label: "Late-night ramen" }),
+      meal({ date: "2026-10-02", slot: "other", label: "Morning coffee", place: 1.5 }),
+      meal({ date: "2026-10-02", slot: "other", label: "Afternoon tea", place: 2.5 }),
+      meal({ date: "2026-10-02", slot: "other", label: "Dawn market", place: 0.5 }),
+      meal({ date: "2026-10-02", slot: "lunch" }),
+    ];
+    expect(dayTrail("2026-10-02", meals).map((e) => e.name)).toEqual([
+      "Dawn market",
+      "Breakfast",
+      "Morning coffee",
+      "Lunch",
+      "Afternoon tea",
+      "Dinner",
+      "Late-night ramen",
+    ]);
   });
 
   test("each entry shows its meal's state", () => {

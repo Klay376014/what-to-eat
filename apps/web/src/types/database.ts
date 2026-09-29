@@ -242,6 +242,7 @@ export type Database = {
           date: string;
           id: string;
           label: string | null;
+          place: number | null;
           position: number;
           slot: Database["public"]["Enums"]["meal_slot"];
           start_time: string | null;
@@ -252,6 +253,7 @@ export type Database = {
           date: string;
           id?: string;
           label?: string | null;
+          place?: number | null;
           position?: never;
           slot: Database["public"]["Enums"]["meal_slot"];
           start_time?: string | null;
@@ -262,6 +264,7 @@ export type Database = {
           date?: string;
           id?: string;
           label?: string | null;
+          place?: number | null;
           position?: never;
           slot?: Database["public"]["Enums"]["meal_slot"];
           start_time?: string | null;
@@ -566,6 +569,11 @@ export type Database = {
       record_nudge_emails: {
         Args: { emails: Json; nudge_id: number; trip_id: string };
         Returns: undefined;
+      };
+      // #40: any current member moves an "other" meal up or down its day (authenticated only).
+      move_meal: {
+        Args: { direction: string; meal_id: string };
+        Returns: { id: string; place: number }[];
       };
       // #16: any current member nudges a meal; returns when (authenticated only).
       nudge_meal: { Args: { meal_id: string }; Returns: string };

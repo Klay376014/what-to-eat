@@ -21,7 +21,12 @@ import BaseCard from "../ui/BaseCard.vue";
 import TextField from "../ui/TextField.vue";
 import { isIsoDate, readDayParam, writeDayParam } from "./dayParam.ts";
 import DayTabs from "./DayTabs.vue";
-import DayTrail, { type AddMeal, type RenameMeal, type SetMealTime } from "./DayTrail.vue";
+import DayTrail, {
+  type AddMeal,
+  type MoveMeal,
+  type RenameMeal,
+  type SetMealTime,
+} from "./DayTrail.vue";
 import type { Meal } from "./meal.ts";
 import { SlotTakenError, useMealsApi } from "./mealsApi.ts";
 import { dayTabs, dayTrail, defaultDay, tripDates } from "./tripDays.ts";
@@ -108,6 +113,15 @@ function goTo(day: string) {
 const rename: RenameMeal = async (mealId, label) => {
   const renamed = await api.renameMeal(mealId, label);
   meals.value = meals.value.map((m) => (m.id === mealId ? { ...m, label: renamed.label } : m));
+};
+
+/** Moves an "other" meal up or down its day, and every meal it moved past with it. */
+const move: MoveMeal = async (mealId, direction) => {
+  const moved = new Map((await api.moveMeal(mealId, direction)).map((m) => [m.id, m.place]));
+  meals.value = meals.value.map((m) => {
+    const place = moved.get(m.id);
+    return place === undefined ? m : { ...m, place };
+  });
 };
 
 /**
@@ -201,6 +215,7 @@ const add: AddMeal = async (meal) => {
           :add="add"
           :rename="rename"
           :set-time="setTime"
+          :move="move"
           :time-zone="trip.timezone"
           :organiser="trip.myRole === 'organiser'"
           :open-meal-id="openMeal?.day === activeDay ? openMeal.mealId : null"

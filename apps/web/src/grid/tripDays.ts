@@ -5,7 +5,15 @@
  */
 import type { IsoDate, Trip } from "../trips/trip.ts";
 import type { MealSlotState } from "../ui/mealSlotState.ts";
-import { FIXED_SLOTS, mealName, mealState, slotName, type Meal, type MealSlot } from "./meal.ts";
+import {
+  FIXED_PLACES,
+  FIXED_SLOTS,
+  mealName,
+  mealState,
+  slotName,
+  type Meal,
+  type MealSlot,
+} from "./meal.ts";
 
 type TripRange = Pick<Trip, "startDate" | "endDate">;
 
@@ -46,27 +54,36 @@ export interface TrailEntry {
 }
 
 /**
- * A day's trail: breakfast, lunch and dinner first, in that order, whether or
- * not anyone has added them yet; then the day's "other" meals in the order
- * they were added.
+ * A day's trail: breakfast, lunch and dinner in that order, whether or not
+ * anyone has added them yet, with the day's "other" meals wherever members
+ * put them around those (#40).
  */
 export function dayTrail(date: IsoDate, meals: readonly Meal[]): TrailEntry[] {
   const onDay = meals.filter((m) => m.date === date);
-  const fixed = FIXED_SLOTS.map((slot): TrailEntry => {
+  const fixed = FIXED_SLOTS.map((slot) => {
     const meal = onDay.find((m) => m.slot === slot) ?? null;
-    return { key: slot, slot, name: slotName(slot), meal, state: mealState(meal) };
+    const entry: TrailEntry = {
+      key: slot,
+      slot,
+      name: slotName(slot),
+      meal,
+      state: mealState(meal),
+    };
+    return { place: FIXED_PLACES[slot], entry };
   });
   const others = onDay
     .filter((m) => m.slot === "other")
-    .sort((a, b) => a.position - b.position)
-    .map((meal): TrailEntry => ({
-      key: meal.id,
-      slot: "other",
-      name: mealName(meal),
-      meal,
-      state: mealState(meal),
-    }));
-  return [...fixed, ...others];
+    .map((meal) => {
+      const entry: TrailEntry = {
+        key: meal.id,
+        slot: "other",
+        name: mealName(meal),
+        meal,
+        state: mealState(meal),
+      };
+      return { place: meal.place ?? Infinity, entry };
+    });
+  return [...fixed, ...others].sort((a, b) => a.place - b.place).map(({ entry }) => entry);
 }
 
 export interface DaySummary {

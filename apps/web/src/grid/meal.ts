@@ -7,6 +7,17 @@ export type FixedSlot = Exclude<MealSlot, "other">;
 /** At most one of each per day, in this order on the trail. */
 export const FIXED_SLOTS: readonly FixedSlot[] = ["breakfast", "lunch", "dinner"];
 
+/**
+ * Where breakfast, lunch and dinner sit on a day's trail, whether or not
+ * anyone has added them. An "other" meal's place falls anywhere around them:
+ * 2.5 is between lunch and dinner. Mirrors public.move_meal.
+ */
+export const FIXED_PLACES: Readonly<Record<FixedSlot, number>> = {
+  breakfast: 1,
+  lunch: 2,
+  dinner: 3,
+};
+
 /** Mirrors the label check on public.meals. */
 export const MAX_MEAL_LABEL_LENGTH = 60;
 
@@ -25,8 +36,14 @@ export interface Meal {
   slot: MealSlot;
   /** What an "other" meal is called; null for breakfast, lunch and dinner. */
   label: string | null;
-  /** Its place in the day. Only "other" meals share a slot, so this orders them. */
+  /** When it was added, relative to the trip's other meals: later is larger. */
   position: number;
+  /**
+   * An "other" meal's place on its day's trail, among FIXED_PLACES; null for
+   * breakfast, lunch and dinner, which sit at theirs. A new one goes after
+   * dinner and after every meal before it; members move it from there (#40).
+   */
+  place: number | null;
   /**
    * When it starts on the trip's clock ("HH:MM"), when someone set it; null
    * for its slot's usual time (calendar/mealTime.ts).

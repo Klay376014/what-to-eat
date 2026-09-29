@@ -602,6 +602,136 @@ describe("renaming an other meal", () => {
   });
 });
 
+describe("moving an other meal (#40)", () => {
+  function teaAndSnack() {
+    return createFakeMealsApi({
+      meals: [
+        aMeal({ tripId: "tokyo", date: "2026-10-01", slot: "lunch" }),
+        aMeal({ id: "tea", tripId: "tokyo", date: "2026-10-01", slot: "other", label: "Tea" }),
+        aMeal({ id: "snack", tripId: "tokyo", date: "2026-10-01", slot: "other", label: "Snack" }),
+      ],
+    });
+  }
+
+  function names(wrapper: Wrapper) {
+    return panel(wrapper)
+      .findAll(".slot-name")
+      .map((n) => n.text().trim());
+  }
+
+  async function open(wrapper: Wrapper, name: string) {
+    await slotButton(wrapper, name).trigger("click");
+    await flushPromises();
+  }
+
+  async function move(wrapper: Wrapper, direction: "up" | "down") {
+    await buttonByText(wrapper, `Move ${direction}`).trigger("click");
+    await flushPromises();
+  }
+
+  test("an other meal's details offer moving it; breakfast, lunch and dinner's do not", async () => {
+    const wrapper = await mountGrid(tokyo, teaAndSnack());
+
+    for (const name of ["Breakfast", "Lunch", "Dinner"]) {
+      await open(wrapper, name);
+      const labels = panel(wrapper)
+        .findAll("button")
+        .map((b) => b.text().trim());
+      expect(labels, name).not.toContain("Move up");
+      expect(labels, name).not.toContain("Move down");
+    }
+    await open(wrapper, "Tea");
+    expect(buttonByText(wrapper, "Move up").exists()).toBe(true);
+    expect(buttonByText(wrapper, "Move down").exists()).toBe(true);
+  });
+
+  test("moves one stop at a time, past other meals and past breakfast, lunch and dinner, planned or not", async () => {
+    const api = teaAndSnack();
+    const wrapper = await mountGrid(tokyo, api);
+    expect(names(wrapper)).toEqual(["Breakfast", "Lunch", "Dinner", "Tea", "Snack"]);
+    await open(wrapper, "Snack");
+
+    await move(wrapper, "up");
+    expect(names(wrapper)).toEqual(["Breakfast", "Lunch", "Dinner", "Snack", "Tea"]);
+    await move(wrapper, "up");
+    expect(names(wrapper)).toEqual(["Breakfast", "Lunch", "Snack", "Dinner", "Tea"]);
+    await move(wrapper, "up");
+    expect(names(wrapper)).toEqual(["Breakfast", "Snack", "Lunch", "Dinner", "Tea"]);
+    await move(wrapper, "up");
+    expect(names(wrapper)).toEqual(["Snack", "Breakfast", "Lunch", "Dinner", "Tea"]);
+    await move(wrapper, "down");
+    expect(names(wrapper)).toEqual(["Breakfast", "Snack", "Lunch", "Dinner", "Tea"]);
+
+    // Saved, so everyone opening the trip sees the same trail.
+    const again = await mountGrid(tokyo, api);
+    expect(names(again)).toEqual(["Breakfast", "Snack", "Lunch", "Dinner", "Tea"]);
+  });
+
+  test("cannot move past either end of the day", async () => {
+    const wrapper = await mountGrid(tokyo, teaAndSnack());
+    await open(wrapper, "Snack");
+    expect(buttonByText(wrapper, "Move down").attributes("disabled")).toBeDefined();
+    expect(buttonByText(wrapper, "Move up").attributes("disabled")).toBeUndefined();
+
+    for (let i = 0; i < 4; i++) await move(wrapper, "up");
+    expect(names(wrapper)[0]).toBe("Snack");
+    expect(buttonByText(wrapper, "Move up").attributes("disabled")).toBeDefined();
+    // The pressed button can no longer be used, so the focus goes to the other.
+    expect(document.activeElement).toBe(buttonByText(wrapper, "Move down").element);
+  });
+
+  test("keeps the meal open and the focus on the button pressed, and says where it went", async () => {
+    const wrapper = await mountGrid(tokyo, teaAndSnack());
+    await open(wrapper, "Tea");
+
+    await move(wrapper, "up");
+    expect(slotButton(wrapper, "Tea").attributes("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(buttonByText(wrapper, "Move up").element);
+    expect(panel(wrapper).get('[role="status"]').text()).toBe("Moved Tea up, before Dinner.");
+
+    await move(wrapper, "down");
+    expect(panel(wrapper).get('[role="status"]').text()).toBe("Moved Tea down, after Dinner.");
+  });
+
+  test("a failed move says so and leaves the trail as it was", async () => {
+    const backend = teaAndSnack();
+    const api: FakeMealsApi = {
+      ...backend,
+      async moveMeal() {
+        throw new Error("network down");
+      },
+    };
+    const wrapper = await mountGrid(tokyo, api);
+    await open(wrapper, "Tea");
+
+    await move(wrapper, "up");
+    expect(panel(wrapper).get('[role="alert"]').text()).toBe(
+      "Couldn't move the meal: network down",
+    );
+    expect(names(wrapper)).toEqual(["Breakfast", "Lunch", "Dinner", "Tea", "Snack"]);
+  });
+
+  test("a meal added after moving others still goes at the end of the day", async () => {
+    const wrapper = await mountGrid(tokyo, teaAndSnack());
+    await open(wrapper, "Snack");
+    for (let i = 0; i < 3; i++) await move(wrapper, "up");
+
+    await buttonByText(wrapper, "Add another meal").trigger("click");
+    await fieldByLabel(wrapper, "What's the meal?").setValue("Night market");
+    await buttonByText(wrapper, "Add meal").trigger("click");
+    await flushPromises();
+
+    expect(names(wrapper)).toEqual([
+      "Breakfast",
+      "Snack",
+      "Lunch",
+      "Dinner",
+      "Tea",
+      "Night market",
+    ]);
+  });
+});
+
 describe("proposing from the grid", () => {
   test("a proposal made in a meal's details shows on its marker and in the day's summary", async () => {
     const api = createFakeMealsApi({

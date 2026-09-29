@@ -12,8 +12,9 @@
 /** What a Maps place link says about the place. */
 export interface ResolvedPlace {
   placeName: string;
-  lat: number;
-  lng: number;
+  /** Null together when the address has none: links shared from the phone app. */
+  lat: number | null;
+  lng: number | null;
   /**
    * The place's CID, in decimal: the second half of the `!1s` feature id
    * pair. Short links carry no Places `place_id`; this is what they have.
@@ -87,7 +88,10 @@ export function readReply(head: string): Reply {
 }
 
 /**
- * The place a Maps place address names, or null when it cannot be read.
+ * The place a Maps address names, or null when it cannot be read. Google
+ * sends a short link to one of two shapes.
+ *
+ * Shared from desktop, a place address:
  *
  * - The name is the `/maps/place/<name>/` path segment, whatever the host:
  *   Google sends each country to its own (google.com.tw, google.co.jp).
@@ -95,6 +99,13 @@ export function readReply(head: string): Reply {
  *   never the `@lat,lng` after the name, which is where the map was looking.
  * - The CID is the second half of the `!1s0x…:0x…` feature id. Other feature
  *   ids (`!5s` is the building the place is in) are not the place's.
+ *
+ * Shared from the phone app, a search for the place (`/?q=…&ftid=…`):
+ *
+ * - The name is `q` up to its first ", ": the rest is the address. A name
+ *   with ", " in it is cut short there.
+ * - The CID is the second half of `ftid`, the same feature id.
+ * - There are no coordinates, so the place has none.
  */
 export function parsePlaceUrl(address: string): ResolvedPlace | null {
   let url: URL;
@@ -103,22 +114,42 @@ export function parsePlaceUrl(address: string): ResolvedPlace | null {
   } catch {
     return null;
   }
+  return url.pathname.startsWith("/maps/place/") ? placeFromPath(url) : placeFromSearch(url);
+}
 
+function placeFromPath(url: URL): ResolvedPlace | null {
   const placeName = nameFrom(url.pathname);
   // The data part is in the path; the query can hold a copy of `!` markers
   // for other things, so only the path is read.
   const coordinates = /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/.exec(url.pathname);
-  const featureId = /!1s0x[0-9a-f]{1,16}:0x([0-9a-f]{1,16})(?![0-9a-z])/i.exec(url.pathname);
+  const featureId = /!1s(0x[0-9a-f]{1,16}:0x[0-9a-f]{1,16})(?![0-9a-z])/i.exec(url.pathname);
   if (placeName === null || coordinates === null || featureId === null) return null;
 
   const lat = Number(coordinates[1]);
   const lng = Number(coordinates[2]);
   if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return null;
 
-  const placeCid = BigInt(`0x${featureId[1]}`).toString();
-  if (placeCid === "0") return null;
+  const placeCid = cidFrom(featureId[1]!);
+  if (placeCid === null) return null;
 
   return { placeName, lat, lng, placeCid };
+}
+
+function placeFromSearch(url: URL): ResolvedPlace | null {
+  // Only a search on its own: /maps/search/ and /maps/dir/ are not a place.
+  if (url.pathname !== "/" && url.pathname !== "/maps") return null;
+  const placeName = (url.searchParams.get("q") ?? "").split(", ")[0]!.replace(/\s+/g, " ").trim();
+  const placeCid = cidFrom(url.searchParams.get("ftid") ?? "");
+  if (placeName.length === 0 || placeCid === null) return null;
+  return { placeName, lat: null, lng: null, placeCid };
+}
+
+/** The CID in a `0x…:0x…` feature id, in decimal, or null. */
+function cidFrom(featureId: string): string | null {
+  const second = /^0x[0-9a-f]{1,16}:0x([0-9a-f]{1,16})$/i.exec(featureId)?.[1];
+  if (second === undefined) return null;
+  const cid = BigInt(`0x${second}`).toString();
+  return cid === "0" ? null : cid;
 }
 
 /** The name in `/maps/place/<name>/…`, decoded, or null. */

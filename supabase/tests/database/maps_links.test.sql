@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(28);
+select plan(33);
 
 select has_table('public', 'maps_links', 'maps_links exists');
 select col_is_pk('public', 'maps_links', 'source_url', 'one resolution per short link');
@@ -76,7 +76,31 @@ select throws_ok(
   $$ insert into public.maps_links (source_url, place_name)
      values ('https://maps.app.goo.gl/HalfResolved1', 'Afuri') $$,
   '23514', null,
-  'a resolution is all of name, CID and coordinates, or none of them'
+  'a place is both its name and its CID: a name alone is not one'
+);
+select throws_ok(
+  $$ insert into public.maps_links (source_url, place_cid)
+     values ('https://maps.app.goo.gl/HalfResolved2', '1') $$,
+  '23514', null,
+  'nor a CID alone'
+);
+select throws_ok(
+  $$ insert into public.maps_links (source_url, place_name, place_cid, lat)
+     values ('https://maps.app.goo.gl/HalfResolved3', 'Afuri', '1', 25) $$,
+  '23514', null,
+  'coordinates are both or neither'
+);
+select throws_ok(
+  $$ insert into public.maps_links (source_url, lat, lng)
+     values ('https://maps.app.goo.gl/HalfResolved4', 25, 121) $$,
+  '23514', null,
+  'coordinates without a place are not a resolution'
+);
+select lives_ok(
+  $$ insert into public.maps_links (source_url, place_name, place_cid)
+     values ('https://maps.app.goo.gl/2KRxNgxoF3nE5uC66?g_st=ic', 'Onigiri Gorichan',
+             '17789062171442119345') $$,
+  'a place shared from the phone app is kept with its name and CID, and no coordinates'
 );
 select throws_ok(
   $$ insert into public.maps_links (source_url)
@@ -156,6 +180,14 @@ select results_eq(
              '11272421852253356408'::text,
              25.0140156::double precision, 121.542539::double precision) $$,
   'a proposal made with a resolved link stores its CID and coordinates beside the link, and keeps the name as typed'
+);
+select results_eq(
+  $$ insert into public.proposals (meal_id, place_name, source_url)
+     values ('a0000000-0000-0000-0000-000000000001', 'Gorichan',
+             'https://maps.app.goo.gl/2KRxNgxoF3nE5uC66?g_st=ic')
+     returning place_cid, lat, lng $$,
+  $$ values ('17789062171442119345'::text, null::double precision, null::double precision) $$,
+  'a proposal made with a link from the phone app stores its CID, and no coordinates'
 );
 select results_eq(
   $$ insert into public.proposals (meal_id, place_name, source_url)

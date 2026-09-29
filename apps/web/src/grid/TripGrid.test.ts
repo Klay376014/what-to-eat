@@ -179,7 +179,7 @@ describe("a dated trip", () => {
     expect(trail(wrapper)).toEqual([
       "Breakfast Not planned",
       "Lunch Being discussed: 3 proposals",
-      "Dinner Decided: Afuri Ramen Ebisu",
+      "Dinner at 19:00 Decided: Afuri Ramen Ebisu",
     ]);
   });
 
@@ -758,7 +758,7 @@ describe("a meal's decision (#11)", () => {
 
     await buttonByText(wrapper, "Decide on this Afuri").trigger("click");
     await flushPromises();
-    expect(trail(wrapper)).toContain("Dinner Decided: Afuri");
+    expect(trail(wrapper)).toContain("Dinner at 19:00 Decided: Afuri");
 
     await buttonByText(wrapper, "Clear the decision").trigger("click");
     await flushPromises();
@@ -773,7 +773,7 @@ describe("a meal's decision (#11)", () => {
     await slotButton(wrapper, "Dinner").trigger("click");
     await flushPromises();
 
-    expect(trail(wrapper)).toContain("Dinner Decided: Tsuta");
+    expect(trail(wrapper)).toContain("Dinner at 19:00 Decided: Tsuta");
   });
 
   test("the organiser is offered changing a member's decision; another member is not", async () => {
@@ -867,6 +867,69 @@ describe("a meal's time", () => {
 
     expect(calendar.syncs("tokyo")).toBe(before + 1);
     expect(panel(wrapper).text()).toContain("On Kenji's trip calendar, with everyone invited.");
+  });
+});
+
+describe("a decided meal's time on the trail (#39)", () => {
+  function decidedDay(dinnerTime: string | null) {
+    return createFakeMealsApi({
+      meals: [
+        aMeal({ tripId: "tokyo", date: "2026-10-01", slot: "lunch", proposals: 1 }),
+        aMeal({
+          id: "dinner",
+          tripId: "tokyo",
+          date: "2026-10-01",
+          slot: "dinner",
+          proposals: 1,
+          startTime: dinnerTime,
+          decidedRestaurant: "Afuri",
+        }),
+        aMeal({
+          tripId: "tokyo",
+          date: "2026-10-01",
+          slot: "other",
+          label: "Late-night ramen",
+          startTime: "23:30",
+          proposals: 1,
+          decidedRestaurant: "Ichiran",
+        }),
+      ],
+    });
+  }
+
+  test("shows without opening the meal, and only once it is decided", async () => {
+    const wrapper = await mountGrid(tokyo, decidedDay("20:30"));
+
+    expect(trail(wrapper)).toEqual([
+      "Breakfast Not planned",
+      "Lunch Being discussed: 1 proposal",
+      "Dinner at 20:30 Decided: Afuri",
+      "Late-night ramen at 23:30 Decided: Ichiran",
+    ]);
+  });
+
+  test("is the slot's usual time when nobody set one", async () => {
+    const wrapper = await mountGrid(tokyo, decidedDay(null));
+
+    expect(trail(wrapper)).toContain("Dinner at 19:00 Decided: Afuri");
+  });
+
+  test("follows a new time set in the meal's details", async () => {
+    // Opening the meal loads its decision, so the proposals need it too.
+    const proposals = createFakeProposalsApi({
+      proposals: [aProposal({ id: "afuri", mealId: "dinner", placeName: "Afuri" })],
+    });
+    proposals.decideAs("dinner", "afuri", { id: "kenji", name: "Kenji" });
+    const wrapper = await mountGrid(tokyo, decidedDay(null), proposals);
+    await slotButton(wrapper, "Dinner").trigger("click");
+    await flushPromises();
+
+    await buttonByText(wrapper, "Change time").trigger("click");
+    await fieldByLabel(wrapper, "Start time (Tokyo time)").setValue("21:00");
+    await buttonByText(wrapper, "Save time").trigger("click");
+    await flushPromises();
+
+    expect(trail(wrapper)).toContain("Dinner at 21:00 Decided: Afuri");
   });
 });
 

@@ -1,8 +1,8 @@
 // The maps-link Edge Function (#9): what a pasted Maps short link points at.
 //
 // POST { url } from a signed-in member, answered with { place } (the name,
-// CID and coordinates) or { place: null } when the link could not be
-// resolved. See docs/adr/0007-maps-link-resolution.md.
+// CID and, unless the link was shared from the phone app, coordinates) or
+// { place: null } when the link could not be resolved. See docs/adr/0007-maps-link-resolution.md.
 //
 // - Each link is resolved once. What it resolved to, or Google's answer that
 //   it has no place (a redirect to something that is not a place, or a
@@ -84,9 +84,7 @@ type Row = Pick<
 >;
 
 function placeOf(row: Row): ResolvedPlace | null {
-  if (row.place_name === null || row.place_cid === null || row.lat === null || row.lng === null) {
-    return null;
-  }
+  if (row.place_name === null || row.place_cid === null) return null;
   return { placeName: row.place_name, placeCid: row.place_cid, lat: row.lat, lng: row.lng };
 }
 

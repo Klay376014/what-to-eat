@@ -31,6 +31,22 @@ See `supabase/functions/maps-link/`, `apps/web/src/proposals/mapsLink.ts` and
   Building the request and reading the head are pure functions
   (`redirectRequest`, `readReply`), unit-tested with the rest of the parsing.
   The whole exchange has a 5-second limit.
+- **Two address shapes are read** (#37). A link shared from desktop Maps is
+  sent to a place address, `/maps/place/<name>/…/data=…!1s0x…:0x…!3d…!4d…`,
+  read as above. One shared from the phone app (it carries `?g_st=ic`) is sent
+  to a search, `https://maps.google.com?q=<name>, <address>&ftid=0x…:0x…`, with
+  no place segment and no coordinates; following it further only reaches a
+  page, and nothing follows redirects. From that shape the name is `q` up to
+  its first `, ` (a name with `, ` in it is cut short there, which is
+  accepted), the CID is `ftid`'s second half, and there are no coordinates.
+  So a resolution is a name and CID together, with coordinates when the
+  address had them; a proposal filled from a phone link has a CID and no
+  coordinates, which `mapsUrl` and calendar events already handle. A desktop
+  place address with no `!3d`/`!4d` is still "could not parse", as before.
+  Every link kept as "no place" before this was let go by the migration
+  (`20261004090000_maps_links_from_the_phone_app.sql`), the one time a
+  resolution was ever removed: what a link was sent to is not kept, so phone
+  links could not be told from the rest, and each is asked once more.
 - **Only `https://maps.app.goo.gl/<id>` is ever asked** (`shortLink`), so the
   function cannot be pointed at another host. It serves signed-in users only.
 - **The database fills in the place.** `public.maps_links` holds each link's

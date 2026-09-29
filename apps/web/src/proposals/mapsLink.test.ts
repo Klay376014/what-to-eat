@@ -45,6 +45,12 @@ const NO_COORDINATES =
 const DROPPED_PIN =
   "https://www.google.hu/maps/place/43%C2%B045'36.6%22N+19%C2%B017'20.4%22E/@43.7599245,19.283682,1642m/data=!3m1!1e3!4m4!3m3!8m2!3d43.7601714!4d19.2889867?coh=245187&entry=tts&g_ep=EgoyMDI1MDUwMy4wIPu8ASoJLDEwMjExNDUzSAFQAw%3D%3D&skid=b69334ca-4703-474c-b590-9598a4b534ad";
 
+// maps.app.goo.gl/2KRxNgxoF3nE5uC66?g_st=ic: shared from the phone app, which
+// sends a search for "<name>, <address>" with the place's feature id (ftid)
+// beside it, and no /maps/place/ path or coordinates.
+const ONIGIRI_GORICHAN =
+  "https://maps.google.com?q=Onigiri+Gorichan,+%E5%AF%8C%E5%A3%AB%E3%83%93%E3%83%AB%E5%8D%97%E8%88%B9%E5%A0%B4+1%E9%9A%8E+3+Chome-5-28+Minamisenba,+Chuo+Ward,+Osaka,+542-0081%E6%97%A5%E6%9C%AC&ftid=0x6000e786af0c2635:0xf6df71cb602582b1&entry=gps&shh=CAE&lucs=,94297699,100826479,94231188,94280568,100821555,47071704,94218641,94282134,100835694,94286869,100820247,100822504&g_ep=CAISEjI2LjM4LjEuOTgwODE1NDQ1MBgAIIgnKnEsOTQyOTc2OTksMTAwODI2NDc5LDk0MjMxMTg4LDk0MjgwNTY4LDEwMDgyMTU1NSw0NzA3MTcwNCw5NDIxODY0MSw5NDI4MjEzNCwxMDA4MzU2OTQsOTQyODY4NjksMTAwODIwMjQ3LDEwMDgyMjUwNEICVFc%3D&skid=bb1477c1-6a76-4fcb-bf58-88d39bd4614b&g_st=ic";
+
 describe("parsePlaceUrl", () => {
   test("a place link yields its name, coordinates and CID", () => {
     expect(parsePlaceUrl(JACK_BASKIN)).toEqual({
@@ -114,6 +120,47 @@ describe("parsePlaceUrl", () => {
     expect(
       parsePlaceUrl("https://www.google.com/maps/place/Afuri/?q=!1s0x1:0x2!3d1!4d2"),
     ).toBeNull();
+  });
+});
+
+describe("parsePlaceUrl, for a link shared from the phone app", () => {
+  test("yields the name before the address, the CID from ftid, and no coordinates", () => {
+    expect(parsePlaceUrl(ONIGIRI_GORICHAN)).toEqual({
+      placeName: "Onigiri Gorichan",
+      lat: null,
+      lng: null,
+      placeCid: "17789062171442119345",
+    });
+  });
+
+  test("a search with only a name, and no address after it, is that name", () => {
+    expect(parsePlaceUrl("https://maps.google.com?q=Afuri&ftid=0x1:0x2")?.placeName).toBe("Afuri");
+  });
+
+  test("the same address on /maps, where maps.google.com sends it next, is read the same", () => {
+    expect(parsePlaceUrl("https://maps.google.com/maps?q=Afuri,+Tokyo&ftid=0x1:0x2")).toEqual({
+      placeName: "Afuri",
+      lat: null,
+      lng: null,
+      placeCid: "2",
+    });
+  });
+
+  test("a search that is not for a feature could not be parsed", () => {
+    for (const input of [
+      "https://maps.google.com?q=Onigiri+Gorichan,+Osaka",
+      "https://maps.google.com?q=&ftid=0x1:0x2",
+      "https://maps.google.com?q=+,+Osaka&ftid=0x1:0x2",
+      "https://maps.google.com?ftid=0x1:0x2",
+      "https://maps.google.com?q=Afuri&ftid=0x1:0x0",
+      "https://maps.google.com?q=Afuri&ftid=0x1:0x12345678901234567",
+      "https://maps.google.com?q=Afuri&ftid=0x1:0x2x",
+      "https://maps.google.com?q=Afuri&ftid=nonsense",
+      "https://maps.google.com/maps/search/Afuri?q=Afuri&ftid=0x1:0x2",
+      "https://maps.google.com/maps/dir/?q=Afuri&ftid=0x1:0x2",
+    ]) {
+      expect(parsePlaceUrl(input), input).toBeNull();
+    }
   });
 });
 

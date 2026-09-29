@@ -8,7 +8,8 @@ Status: accepted (#9)
 its coordinates and CID beside the link. The PRD (#1) settles the rules: the
 request sends no `User-Agent` and does not follow the redirect; coordinates
 come from `!3d`/`!4d`, never `@lat,lng`; the CID is the second half of the
-`!1s` feature id; results are cached for good against the source URL; any
+`!1s` feature id; results are cached for good against the source URL (once
+let go since, by #37); any
 failure falls back silently to typing the name.
 
 Four things were left open: how to send a request with no `User-Agent` from
@@ -46,7 +47,9 @@ See `supabase/functions/maps-link/`, `apps/web/src/proposals/mapsLink.ts` and
   Every link kept as "no place" before this was let go by the migration
   (`20261004090000_maps_links_from_the_phone_app.sql`), the one time a
   resolution was ever removed: what a link was sent to is not kept, so phone
-  links could not be told from the rest, and each is asked once more.
+  links could not be told from the rest, and each is asked once more. The
+  function is deployed before that migration runs, or the old one could keep
+  a phone link as "no place" again in between.
 - **Only `https://maps.app.goo.gl/<id>` is ever asked** (`shortLink`), so the
   function cannot be pointed at another host. It serves signed-in users only.
 - **The database fills in the place.** `public.maps_links` holds each link's
@@ -55,12 +58,14 @@ See `supabase/functions/maps-link/`, `apps/web/src/proposals/mapsLink.ts` and
   copies the CID and coordinates from there. Clients still have no grant on
   `place_cid`, `lat` or `lng`, so a proposal's place can only be what Google
   said about its link, never whatever a request carried. Only service_role
-  (the function) reads or adds to the cache; nobody updates or deletes it.
+  (the function) reads or adds to the cache; nobody updates or deletes it
+  (a migration did once, for #37, below).
 - **Only Google's answers are cached; no answer is not** (the maintainer's
   decision on #9). `readReply` sorts a reply three ways:
   - a redirect: its address is parsed, and the place, or "could not parse"
     (a search, directions, an address missing its place segment, coordinates
-    or feature id), is kept for good;
+    or feature id), is kept for good (all such rows, 404s included, were let
+    go once, for #37);
   - a 404 or 410: Google says the link does not exist. A dead short link does
     not come back, so this is kept for good too, as a row with no place;
   - anything else: a timeout, a failed connection or TLS handshake, a 429, a

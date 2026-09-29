@@ -2,7 +2,8 @@
 //
 // POST { url } from a signed-in member, answered with { place } (the name,
 // CID and, unless the link was shared from the phone app, coordinates) or
-// { place: null } when the link could not be resolved. See docs/adr/0007-maps-link-resolution.md.
+// { place: null } when the link could not be resolved. See
+// docs/adr/0007-maps-link-resolution.md.
 //
 // - Each link is resolved once. What it resolved to, or Google's answer that
 //   it has no place (a redirect to something that is not a place, or a

@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /*
- * One day's meals on a trail (ADR 0003): breakfast, lunch and dinner, then
- * the day's "other" meals in the order added, down a dashed route line with a
- * pin per meal, filled when the meal is decided (ADR 0002, sunlight rule 2).
- * The pin is decoration; each meal's MealSlotMarker carries its state.
+ * One day's meals on a trail (ADR 0003): breakfast, lunch and dinner, with
+ * the day's "other" meals wherever members put them (#40), down a dashed
+ * route line with a pin per meal, filled when the meal is decided (ADR 0002,
+ * sunlight rule 2). The pin is decoration; each meal's MealSlotMarker
+ * carries its state.
  *
  * Each meal's button opens its details below it. A breakfast, lunch or
  * dinner nobody has added yet is offered for adding there; a meal that
  * exists lists its proposals there, takes new ones (#8) and is decided
- * there (#11), and an "other"
- * meal can be renamed there. "Add another meal" adds an "other" meal with
- * its own name.
+ * there (#11), and an "other" meal can be renamed and moved up or down its
+ * day there. "Add another meal" adds an "other" meal with its own name.
  *
  * Each meal starts at its slot's usual time, on the trip's clock, unless
  * someone sets its own (#12); that is the time its calendar event is for.
@@ -27,6 +27,7 @@ import BaseIcon from "../ui/BaseIcon.vue";
 import MealSlotMarker from "../ui/MealSlotMarker.vue";
 import TextField from "../ui/TextField.vue";
 import { MAX_MEAL_LABEL_LENGTH, validateMealLabel, type FixedSlot } from "./meal.ts";
+import type { MoveDirection } from "./mealsApi.ts";
 import type { TrailEntry } from "./tripDays.ts";
 
 export type AddMeal = (meal: { slot: FixedSlot } | { slot: "other"; label: string }) => Promise<{
@@ -42,12 +43,16 @@ export type RenameMeal = (mealId: string, label: string) => Promise<void>;
 /** Sets a meal's own start time ("HH:MM"), or null for its slot's usual one. */
 export type SetMealTime = (mealId: string, startTime: string | null) => Promise<void>;
 
+/** Moves an "other" meal one stop up or down its day; throws when the move is refused. */
+export type MoveMeal = (mealId: string, direction: MoveDirection) => Promise<void>;
+
 const props = defineProps<{
   date: IsoDate;
   trail: readonly TrailEntry[];
   add: AddMeal;
   rename: RenameMeal;
   setTime: SetMealTime;
+  move: MoveMeal;
   /** The trip's timezone: every time here is on its clock. */
   timeZone: string;
   /** Whether the signed-in member organises the trip. */
@@ -98,6 +103,9 @@ const newTimeError = ref<string | undefined>(undefined);
 const timeFailure = ref<string | null>(null);
 const timeForm = useTemplateRef<HTMLFormElement[]>("timeForm");
 const retimeButton = useTemplateRef<InstanceType<typeof BaseButton>[]>("retimeButton");
+
+const moveUpButton = useTemplateRef<InstanceType<typeof BaseButton>[]>("moveUpButton");
+const moveDownButton = useTemplateRef<InstanceType<typeof BaseButton>[]>("moveDownButton");
 
 // A different day starts with everything closed.
 watch(
@@ -206,6 +214,42 @@ async function saveTime(entry: TrailEntry, startTime: string | null) {
   } finally {
     busy.value = false;
   }
+}
+
+// Moving an "other" meal (#40) -----------------------------------------------------
+
+/** The stop the meal would go past that way, or undefined at that end of the day. */
+function nextStop(entry: TrailEntry, direction: MoveDirection): TrailEntry | undefined {
+  const at = props.trail.findIndex((e) => e.key === entry.key);
+  return props.trail[direction === "up" ? at - 1 : at + 1];
+}
+
+function canMove(entry: TrailEntry, direction: MoveDirection): boolean {
+  return nextStop(entry, direction) !== undefined;
+}
+
+async function moveOther(entry: TrailEntry, direction: MoveDirection) {
+  const past = nextStop(entry, direction);
+  if (!past) return;
+  busy.value = true;
+  failure.value = null;
+  notice.value = null;
+  try {
+    await props.move(entry.meal!.id, direction);
+    const where = direction === "up" ? "before" : "after";
+    notice.value = `Moved ${entry.name} ${direction}, ${where} ${past.name}.`;
+  } catch (error) {
+    failure.value = `Couldn't move the meal: ${errorMessage(error)}`;
+  } finally {
+    busy.value = false;
+  }
+  // The meal's stop moved in the list, which can drop the focus: put it back
+  // on the button pressed, or on the other once this end of the day is reached.
+  await nextTick();
+  const other: MoveDirection = direction === "up" ? "down" : "up";
+  const focusOn = canMove(entry, direction) ? direction : other;
+  const button = (focusOn === "up" ? moveUpButton : moveDownButton).value?.[0];
+  (button?.$el as HTMLElement | undefined)?.focus();
 }
 
 /** Runs an add, reporting a failure through `report`. */
@@ -362,9 +406,24 @@ async function submitOther() {
               <BaseButton :disabled="busy" @click="cancelRenaming">Cancel</BaseButton>
             </div>
           </form>
-          <div v-else>
+          <div v-else class="actions">
             <BaseButton ref="renameButton" @click="openRenaming(entry)">
               <BaseIcon name="pencil-simple" /> Rename
+            </BaseButton>
+            <!-- One stop at a time, as buttons rather than dragging (#40). -->
+            <BaseButton
+              ref="moveUpButton"
+              :disabled="busy || !canMove(entry, 'up')"
+              @click="moveOther(entry, 'up')"
+            >
+              <BaseIcon name="arrow-up" /> Move up
+            </BaseButton>
+            <BaseButton
+              ref="moveDownButton"
+              :disabled="busy || !canMove(entry, 'down')"
+              @click="moveOther(entry, 'down')"
+            >
+              <BaseIcon name="arrow-down" /> Move down
             </BaseButton>
           </div>
         </template>

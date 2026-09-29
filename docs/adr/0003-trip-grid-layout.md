@@ -62,9 +62,21 @@ Why C, over the other two:
      ([0002](0002-visual-direction.md), sunlight rule 2).
    - Each meal shows a `MealSlotMarker` (`apps/web/src/ui/`) inside its own
      control, which carries the state.
-3. **"Other" meals repeat on the trail.** Breakfast, lunch and dinner come
-   first, in that order. Then come the day's "Other" meals, each with its own
-   label, in their own stable order, followed by an "Add another meal" action.
+3. **"Other" meals repeat on the trail.** Breakfast, lunch and dinner are
+   always there, in that order. The day's "Other" meals, each with its own
+   label, sit among them in a stable order that every member sees, followed by
+   an "Add another meal" action.
+   - A new "Other" meal goes at the end of the day, after dinner.
+   - Any current member can move an "Other" meal one stop up or down the
+     trail, with Move up and Move down buttons in its details, past another
+     "Other" meal or past breakfast, lunch or dinner, whether those are
+     planned or not. So a morning coffee can sit between breakfast and lunch.
+     Breakfast, lunch and dinner do not move.
+   - Buttons rather than dragging: they work one-handed, by keyboard and with
+     a screen reader, at the 44px minimum below.
+   - (Changed in #40, from user feedback. "Other" meals used to always come
+     after dinner, in the order they were added. That order was stable, but
+     it could put afternoon tea after dinner.)
 4. **Accessibility.**
    - The strip is a tablist: `role="tab"`, `aria-selected`, one tab stop, and
      the left and right arrow keys move between days.

@@ -2,9 +2,9 @@
 /*
  * The strip of day tabs (ADR 0003): each tab names its day and sums it up in
  * words. A tablist with one tab stop; the left and right arrow keys (and Home
- * and End) move between days. Tabs share the width down to 44px each; past
- * that the strip scrolls sideways inside itself, never the page, and keeps the
- * selected day in view.
+ * and End) move between days. Tabs share the width down to their own content,
+ * and never under 44px; past that the strip scrolls sideways inside itself,
+ * never the page, and keeps the selected day in view.
  */
 import { nextTick, onMounted, useTemplateRef, watch } from "vue";
 import type { IsoDate } from "../trips/trip.ts";
@@ -105,11 +105,13 @@ async function onKeydown(event: KeyboardEvent) {
   box-shadow: var(--shadow-card);
 }
 
-/* Equal shares of the width, never under 44px: 7 fit at 360px, and past
-   that the strip scrolls and cuts the next tab at the edge. */
+/* Shares of the width, never under 44px (the flex basis) nor under the tab's
+   widest line, so "10 Oct" and "3 gaps" never break and the strip keeps to
+   three lines (#44). Past that the strip scrolls and cuts the next tab at the
+   edge. */
 .tab {
   flex: 1 0 44px;
-  min-width: 44px;
+  min-width: max-content;
   min-height: 44px;
   display: flex;
   flex-direction: column;

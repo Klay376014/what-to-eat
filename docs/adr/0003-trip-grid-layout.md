@@ -86,9 +86,14 @@ Why C, over the other two:
 
 ### Open edges, and the decision for each
 
-- **Trips longer than about 7 days.**
-  - Tabs share the width equally down to a 44px minimum. At 360px, 7 tabs
-    still fit.
+- **Trips longer than about 6 days.**
+  - Tabs share the width, each at least as wide as its own widest line and
+    never under 44px, so a tab is always three lines: weekday, date and
+    summary, none of them broken. At 360px about 6 tabs fit; a wide screen
+    fits about 10.
+  - (Changed in #44. Tabs used to shrink to 44px, so 7 fitted at 360px, but
+    "1 Oct" and "3 gaps" then broke onto five lines and the sticky strip grew
+    to about 104px tall on a phone. Now it is about 72px at every width.)
   - Past that, the strip scrolls sideways inside its own container, never the
     page. It clips a tab at the edge so it is visible that more days follow.
   - The selected tab is always kept in view, scrolled to the nearest edge,

@@ -16,7 +16,9 @@ const { id, hintId, describedBy } = useFieldIds(toRef(props, "hint"), ref());
 
 <template>
   <div class="checkbox-field">
-    <div class="row">
+    <!-- The whole row is the label, so the box and its words are one 44px
+         target, not a 20px box (#45). -->
+    <label :for="id" class="row">
       <input
         :id="id"
         v-model="model"
@@ -25,8 +27,8 @@ const { id, hintId, describedBy } = useFieldIds(toRef(props, "hint"), ref());
         class="box"
         :aria-describedby="describedBy"
       />
-      <label :for="id">{{ label }}</label>
-    </div>
+      <span>{{ label }}</span>
+    </label>
     <p v-if="hint" :id="hintId" class="hint">{{ hint }}</p>
   </div>
 </template>
@@ -39,22 +41,27 @@ const { id, hintId, describedBy } = useFieldIds(toRef(props, "hint"), ref());
   gap: var(--space-1);
 }
 
+/* 44px tall on one line: the padding centres a line of the label in it, and
+   a longer label grows from there, its box level with the first line. */
 .row {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
+  padding-block: calc((44px - 1lh) / 2);
+  cursor: pointer;
 }
 
-/* A comfortable target without restyling the native control. */
+/* A comfortable box without restyling the native control. */
 .box {
   flex: none;
   width: 1.25rem;
   height: 1.25rem;
-  margin-top: 0.125rem;
+  margin: 0.125rem 0 0;
   accent-color: var(--primary);
 }
 
-.box:disabled {
+.box:disabled,
+.row:has(.box:disabled) {
   cursor: not-allowed;
 }
 

@@ -127,6 +127,7 @@ function toggle(entry: TrailEntry) {
 }
 
 async function openRenaming(entry: TrailEntry) {
+  closeRetiming();
   renaming.value = entry.key;
   newName.value = entry.name;
   newNameError.value = undefined;
@@ -347,8 +348,12 @@ async function submitOther() {
           {{ entry.name }} is decided: {{ entry.state.restaurant }}.
         </p>
 
-        <!-- When it starts, on the trip's clock (#12). -->
+        <!-- When it starts, on the trip's clock (#12), then the meal's own actions:
+             changing its time and, for an "other" meal, renaming and moving it
+             (#40), side by side in one row that wraps only when it must (#45).
+             One form at a time takes the row's place. -->
         <template v-if="entry.meal !== null">
+          <p v-if="retiming !== entry.key">{{ timeText(entry) }}</p>
           <form
             v-if="retiming === entry.key"
             ref="timeForm"
@@ -376,18 +381,9 @@ async function submitOther() {
               <BaseButton :disabled="busy" @click="cancelRetiming">Cancel</BaseButton>
             </div>
           </form>
-          <div v-else class="time">
-            <p>{{ timeText(entry) }}</p>
-            <BaseButton ref="retimeButton" variant="quiet" @click="openRetiming(entry)">
-              <BaseIcon name="pencil-simple" /> Change time
-            </BaseButton>
-          </div>
-        </template>
-
-        <!-- Only an "other" meal has a name of its own to change. -->
-        <template v-if="entry.meal !== null && entry.slot === 'other'">
+          <!-- Only an "other" meal has a name of its own to change. -->
           <form
-            v-if="renaming === entry.key"
+            v-else-if="renaming === entry.key"
             ref="renameForm"
             class="stack-sm"
             novalidate
@@ -407,24 +403,29 @@ async function submitOther() {
             </div>
           </form>
           <div v-else class="actions">
-            <BaseButton ref="renameButton" @click="openRenaming(entry)">
-              <BaseIcon name="pencil-simple" /> Rename
+            <BaseButton ref="retimeButton" @click="openRetiming(entry)">
+              <BaseIcon name="pencil-simple" /> Change time
             </BaseButton>
-            <!-- One stop at a time, as buttons rather than dragging (#40). -->
-            <BaseButton
-              ref="moveUpButton"
-              :disabled="busy || !canMove(entry, 'up')"
-              @click="moveOther(entry, 'up')"
-            >
-              <BaseIcon name="arrow-up" /> Move up
-            </BaseButton>
-            <BaseButton
-              ref="moveDownButton"
-              :disabled="busy || !canMove(entry, 'down')"
-              @click="moveOther(entry, 'down')"
-            >
-              <BaseIcon name="arrow-down" /> Move down
-            </BaseButton>
+            <template v-if="entry.slot === 'other'">
+              <BaseButton ref="renameButton" @click="openRenaming(entry)">
+                <BaseIcon name="pencil-simple" /> Rename
+              </BaseButton>
+              <!-- One stop at a time, as buttons rather than dragging (#40). -->
+              <BaseButton
+                ref="moveUpButton"
+                :disabled="busy || !canMove(entry, 'up')"
+                @click="moveOther(entry, 'up')"
+              >
+                <BaseIcon name="arrow-up" /> Move up
+              </BaseButton>
+              <BaseButton
+                ref="moveDownButton"
+                :disabled="busy || !canMove(entry, 'down')"
+                @click="moveOther(entry, 'down')"
+              >
+                <BaseIcon name="arrow-down" /> Move down
+              </BaseButton>
+            </template>
           </div>
         </template>
 
@@ -469,18 +470,13 @@ async function submitOther() {
 </template>
 
 <style scoped>
-.time {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 /* The route: a dashed line down the left, a pin at each stop. */
 .trail {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 calc(var(--route-dot-size) + var(--space-3));
+  /* The route's indent, which a phone's opened meal reaches back across. */
+  --trail-indent: calc(var(--route-dot-size) + var(--space-3));
+  padding: 0 0 0 var(--trail-indent);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -560,6 +556,20 @@ async function submitOther() {
   padding: var(--space-3);
   background: var(--surface-2);
   border-radius: var(--radius-slot);
+}
+
+/* On a phone an opened meal takes the whole width of the day's card, out
+   past the route line and the card's padding, so its proposals are not three
+   boxes deep in a third of the screen (#45). Positioned, so it paints over
+   the route line rather than under it. The same breakpoint as the proposals'
+   lighter inset in MealProposals.vue. */
+@media (max-width: 30rem) {
+  .details {
+    position: relative;
+    margin-left: calc(-1 * (var(--trail-indent) + var(--card-padding)));
+    margin-right: calc(-1 * var(--card-padding));
+    border-radius: 0;
+  }
 }
 
 .add {

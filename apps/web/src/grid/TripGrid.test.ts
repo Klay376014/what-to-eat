@@ -693,6 +693,24 @@ describe("moving an other meal (#40)", () => {
     expect(panel(wrapper).get('[role="status"]').text()).toBe("Moved Tea down, after Dinner.");
   });
 
+  test("its actions sit together, and a form opened from them takes their place (#45)", async () => {
+    const wrapper = await mountGrid(tokyo, teaAndSnack());
+    await open(wrapper, "Tea");
+    const actions = () =>
+      panel(wrapper)
+        .findAll(".details .actions > button")
+        .map((b) => b.text().trim());
+    expect(actions()).toEqual(["Change time", "Rename", "Move up", "Move down"]);
+
+    await buttonByText(wrapper, "Change time").trigger("click");
+    expect(actions()).toEqual(["Save time", "Cancel"]);
+    await buttonByText(wrapper, "Cancel").trigger("click");
+    await flushPromises();
+
+    await buttonByText(wrapper, "Rename").trigger("click");
+    expect(actions()).toEqual(["Save", "Cancel"]);
+  });
+
   test("a failed move says so and leaves the trail as it was", async () => {
     const backend = teaAndSnack();
     const api: FakeMealsApi = {

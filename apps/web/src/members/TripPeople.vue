@@ -257,8 +257,10 @@ const dialog = computed(() => {
   gap: var(--space-2) var(--space-3);
 }
 
+/* A real basis, not 0: with none, the actions stayed on the name's row until
+   the name had no width left, one letter per line on common phones (#43). */
 .who {
-  flex: 1;
+  flex: 1 1 10rem;
   min-width: 0;
 }
 

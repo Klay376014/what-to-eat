@@ -732,6 +732,16 @@ async function clearDecision() {
   border-radius: var(--radius-slot);
 }
 
+/* On a phone the proposals already sit in an opened meal; a lighter inset
+   gives their names and notes the width (#45). The same breakpoint as the
+   opened meal's full width in DayTrail.vue. */
+@media (max-width: 30rem) {
+  .proposal,
+  .decision {
+    padding: var(--space-2);
+  }
+}
+
 .name {
   font-weight: var(--strong-weight);
 }
@@ -839,14 +849,14 @@ async function clearDecision() {
   min-width: 0;
 }
 
-/* Faces overlap a little, like a stack of pins on the map. */
+/* Faces side by side, their rings touching like a string of pins on the
+   map, wrapping when a narrow screen has more voters than fit. They used to
+   overlap, which hid the initials of the face before (#45). */
 .faces {
   display: inline-flex;
+  flex-wrap: wrap;
   flex: none;
-}
-
-.faces > * + * {
-  margin-left: calc(-1 * var(--space-2));
+  max-width: 50%;
 }
 
 .proposal-actions {

@@ -16,7 +16,7 @@ withDefaults(defineProps<{ as?: string }>(), { as: "section" });
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
-  padding: var(--space-4);
+  padding: var(--card-padding);
   background: var(--surface);
   border: var(--card-border-width) solid var(--border-strong);
   border-radius: var(--radius-card);

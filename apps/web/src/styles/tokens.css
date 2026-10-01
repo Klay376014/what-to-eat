@@ -32,6 +32,7 @@
   --space-3: 12px;
   --space-4: 16px;
   --space-6: 24px;
+  --card-padding: var(--space-4);
   --radius-control: 8px;
   --radius-button: 999px;
   --radius-card: 12px;

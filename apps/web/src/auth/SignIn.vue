@@ -47,4 +47,13 @@ async function start() {
 .sign-in {
   margin-top: calc(var(--space-6) * 2);
 }
+
+/* A 44px target inside the sentence (ADR 0002, sunlight rule 5): padding
+   makes the target, and the same negative margin keeps the line's height,
+   so the hint reads as before (#45). */
+.hint a {
+  display: inline-block;
+  padding-block: calc((44px - 1lh) / 2);
+  margin-block: calc((44px - 1lh) / -2);
+}
 </style>

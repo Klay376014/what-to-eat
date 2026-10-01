@@ -146,7 +146,11 @@ function formatDate(date: string): string {
       <dl class="facts">
         <dt>Dates</dt>
         <dd v-if="selected.startDate && selected.endDate">
-          {{ formatDate(selected.startDate) }} – {{ formatDate(selected.endDate) }}
+          <!-- In the phone's own language; each date kept whole, so a narrow
+               screen breaks the range between them, after the dash (#46). -->
+          <span class="date">{{ formatDate(selected.startDate) }}</span
+          >&nbsp;–
+          <span class="date">{{ formatDate(selected.endDate) }}</span>
         </dd>
         <dd v-else>No dates — for everyday use</dd>
         <dt>Timezone</dt>
@@ -190,15 +194,19 @@ function formatDate(date: string): string {
 </template>
 
 <style scoped>
+/* The picker and "New trip" side by side; on a narrow screen "New trip"
+   wraps below, so the picker has the card's full width for a long name. */
 .trip-bar {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-2);
 }
 
-/* SelectField's root carries this component's scope id, so this reaches its wrapper. */
+/* SelectField's root carries this component's scope id, so this reaches its
+   wrapper. A real basis, so "New trip" wraps before the picker squeezes (#46). */
 .trip-bar > .field {
-  flex: 1;
+  flex: 1 1 18rem;
   min-width: 0;
 }
 
@@ -206,6 +214,10 @@ function formatDate(date: string): string {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: var(--space-1) var(--space-4);
+}
+
+.facts .date {
+  white-space: nowrap;
 }
 
 .facts dt {

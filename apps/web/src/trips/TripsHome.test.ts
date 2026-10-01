@@ -127,6 +127,18 @@ describe("with several trips", () => {
     expect(wrapper.text()).toContain("Organised by Alice");
   });
 
+  test("shows a dated trip's dates in the browser's format, each its own unit (#46)", async () => {
+    const wrapper = await mountHome(createFakeTripsApi({ trips: [tokyo] }));
+    const inLocale = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" });
+
+    // Each date its own unit, so a narrow screen breaks the range between them, never inside one.
+    const dates = wrapper.findAll(".facts dd .date").map((d) => d.text());
+    expect(dates).toEqual([
+      inLocale.format(new Date("2026-10-01T00:00:00Z")),
+      inLocale.format(new Date("2026-10-05T00:00:00Z")),
+    ]);
+  });
+
   test("a new trip can be added alongside the others, and is opened", async () => {
     const wrapper = await mountHome(createFakeTripsApi({ trips: [tokyo] }));
 
@@ -205,6 +217,18 @@ describe("editing a trip", () => {
     expect(currentTripName(wrapper)).toBe("Tokyo and Hakone");
     expect(wrapper.text()).toContain("Asia/Seoul");
     expect(wrapper.text()).toMatch(/Oct 7, 2026|7 Oct 2026/);
+  });
+
+  test("while editing, switching trips and starting a new one wait", async () => {
+    const wrapper = await mountHome(createFakeTripsApi({ trips: [tokyo, seoul] }));
+
+    await buttonByText(wrapper, "Edit trip").trigger("click");
+    expect(fieldByLabel(wrapper, "Trip").attributes("disabled")).toBeDefined();
+    expect(buttonByText(wrapper, "New trip").attributes("disabled")).toBeDefined();
+
+    await buttonByText(wrapper, "Cancel").trigger("click");
+    expect(fieldByLabel(wrapper, "Trip").attributes("disabled")).toBeUndefined();
+    expect(buttonByText(wrapper, "New trip").attributes("disabled")).toBeUndefined();
   });
 
   const withMeals = () =>

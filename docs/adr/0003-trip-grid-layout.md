@@ -95,9 +95,16 @@ Why C, over the other two:
     "1 Oct" and "3 gaps" then broke onto five lines and the sticky strip grew
     to about 104px tall on a phone. Now it is about 72px at every width.)
   - Past that, the strip scrolls sideways inside its own container, never the
-    page. It clips a tab at the edge so it is visible that more days follow.
-  - The selected tab is always kept in view, scrolled to the nearest edge,
-    including when the page opens on a day far into the trip.
+    page. Each edge it can still scroll to shows that more days follow: the
+    tabs fade out there under a caret, which taps pass through. An edge it
+    cannot scroll past, or a strip where every day fits, shows nothing.
+  - The selected tab is kept in view and clear of the edge cues when the
+    page opens, including on a day far into the trip, when a day is selected
+    by tap or arrow key, and when sizes change (the screen narrows, a tab
+    widens). Scrolling the strip by hand is left wherever the person puts it.
+  - (Changed in #48. The strip used to rely on clipping a tab at the edge,
+    but that was a coincidence of widths: when the edge landed between two
+    tabs, nothing showed that more days followed.)
 - **Undated trips (everyday use).**
   - The strip shows the dates that have at least one meal, plus today, in date
     order. Today is labelled "Today".

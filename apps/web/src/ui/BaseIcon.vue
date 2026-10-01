@@ -21,6 +21,8 @@ const icons = {
   "pencil-simple": [{ d: "M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4" }],
   "arrow-up": [{ d: "M12 20V4M5 11l7-7 7 7" }],
   "arrow-down": [{ d: "M12 4v16M5 13l7 7 7-7" }],
+  "caret-left": [{ d: "M15 5l-7 7 7 7" }],
+  "caret-right": [{ d: "M9 5l7 7-7 7" }],
   bell: [{ d: "M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2zM10 20a2 2 0 0 0 4 0" }],
   "calendar-blank": [
     {

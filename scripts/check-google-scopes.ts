@@ -12,7 +12,7 @@ const ALLOWED = new Set(["openid", "email", "profile"]);
 
 const base = process.env.VITE_SUPABASE_URL;
 if (!base) {
-  console.error("Set VITE_SUPABASE_URL (see apps/web/.env.example).");
+  console.error("Set VITE_SUPABASE_URL (see apps/web/env.example).");
   process.exit(2);
 }
 

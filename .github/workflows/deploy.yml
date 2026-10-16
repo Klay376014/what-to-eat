@@ -141,8 +141,14 @@ jobs:
           # environment and could replay a build made with other values.
           # Jekyll copies docs/app through as static files (nothing in it has
           # front matter), which spares writing into its root-owned output.
+          # With voidPlugin() (#53), --outDir holds the static site under
+          # client/ (the Cloudflare Worker build goes to dist/ssr/, which
+          # Pages has no use for), so only client/ is copied in.
+          out="${RUNNER_TEMP}/web"
           VITE_SUPABASE_URL="https://${SUPABASE_PROJECT_REF}.supabase.co" \
-            vp build --base="$BASE" --outDir ../../docs/app --emptyOutDir
+            vp build --base="$BASE" --outDir "$out" --emptyOutDir
+          mkdir -p ../../docs/app
+          cp -R "$out/client/." ../../docs/app/
 
       - uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
         with:

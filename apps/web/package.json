@@ -23,6 +23,7 @@
     "typescript": "~6.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:",
+    "void": "catalog:",
     "vue-tsc": "^3.3.11"
   }
 }

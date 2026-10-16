@@ -1,9 +1,10 @@
 import vue from "@vitejs/plugin-vue";
 import { defineConfig } from "vite-plus";
+import { voidPlugin } from "void";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [voidPlugin(), vue()],
   test: {
     // Component tests mount into a DOM; pure-module tests do not mind one.
     environment: "happy-dom",

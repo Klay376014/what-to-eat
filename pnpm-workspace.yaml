@@ -3,6 +3,12 @@ packages:
   - packages/*
   - tools/*
 
+allowBuilds:
+  esbuild: true
+  workerd: true
+  better-sqlite3: false
+  sharp: true
+
 catalogMode: prefer
 
 catalog:
@@ -13,6 +19,7 @@ catalog:
   typescript: ^7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@0.3.3
   vite-plus: 0.3.3
+  void: ^1.1.0
 overrides:
   vite@*: "catalog:"
 peerDependencyRules:

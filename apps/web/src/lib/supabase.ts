@@ -7,7 +7,7 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 if (!url || !key) {
   throw new Error(
-    "VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be set (see apps/web/.env.example)",
+    "VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be set (see apps/web/env.example)",
   );
 }
 

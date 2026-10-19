@@ -34,7 +34,7 @@ vp run ready      # check + test + build
 
 1. Google Cloud（和登入同一個專案即可）→ APIs & Services → Library：啟用 **Google Calendar API**。
 2. Google Auth Platform → Data Access：加上 `https://www.googleapis.com/auth/calendar.app.created`。不要加更寬的 Calendar scope：這個 scope 不是 sensitive，所以同意畫面沒有「未驗證的應用程式」警告（#2 實測）；換成更寬的會讓警告回來。
-3. Clients → 另建一個 **Web application** client 專給日曆用（不要和登入的共用）。Authorised redirect URIs 填 app 的網址本身：`http://localhost:5173/` 和 `https://klay376014.github.io/what-to-eat/app/`（結尾斜線要有，app 送出的就是 `origin + pathname`）。
+3. Clients → 另建一個 **Web application** client 專給日曆用（不要和登入的共用）。Authorised redirect URIs 填 app 的網址本身：`http://localhost:5173/`、`https://ivy-cudgel.com/` 和 `https://klay376014.github.io/what-to-eat/app/`（舊網址，#57 下架前保留；結尾斜線要有，app 送出的就是 `origin + pathname`）。
 4. `apps/web/.env` 填 `VITE_GOOGLE_CALENDAR_CLIENT_ID`（client ID 是公開的）；GitHub → Settings → Secrets and variables → Actions → **Variables** 加 `GOOGLE_CALENDAR_CLIENT_ID`，部署時編進前端。沒設的話 app 照常運作，只是按「Connect Google Calendar」會說還沒設定。
 5. Edge Function 的 secrets（client secret 只放這裡）：
 
@@ -71,7 +71,7 @@ API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出�
    supabase secrets set RESEND_API_KEY=re_... NOTIFY_SECRET=<上面那串>
    ```
 
-   `EMAIL_FROM`（預設 `What to eat <notify@mail.ivy-cudgel.com>`）和 `APP_URL`（預設 `https://klay376014.github.io/what-to-eat/app/`，信裡的連結都指向它）要改才設。不想讓 key 留在 shell history 的話，寫進一個暫存檔再用 `supabase secrets set --env-file <檔案>`，用完刪掉。
+   `EMAIL_FROM`（預設 `What to eat <notify@mail.ivy-cudgel.com>`）和 `APP_URL`（預設 `https://ivy-cudgel.com/`，信裡的連結都指向它）要改才設。不想讓 key 留在 shell history 的話，寫進一個暫存檔再用 `supabase secrets set --env-file <檔案>`，用完刪掉。
 
 3. `vp run db:push` 套用 migration（會啟用 `pg_cron`、`pg_net`，並排好每分鐘的 `notify` 工作），`vp run functions:deploy` 部署 `notify`（`verify_jwt = false`：資料庫的呼叫沒有 JWT，由函式自己檢查密碼或 session）。
 
@@ -147,4 +147,6 @@ export VITE_GOOGLE_CALENDAR_CLIENT_ID="$(gh variable get GOOGLE_CALENDAR_CLIENT_
 vp exec void deploy
 ```
 
-`VITE_*` 只從 shell 讀：Void 的 build 不會用 `.env` 裡的前端值，所以上面要先 export。`void.config.ts` 讓 Void 只上傳 `dist/client`；`dist/ssr` 是 SPA 用不到的 Worker 產物，裡面的 `.dev.vars` 是 `.env` 的副本，不能上傳。綁了自訂網域後 `workers.dev` 網址會停用。Supabase Auth、Google OAuth 和 `APP_URL` 改指向新網址是 #56。
+`VITE_*` 只從 shell 讀：Void 的 build 不會用 `.env` 裡的前端值，所以上面要先 export。`void.config.ts` 讓 Void 只上傳 `dist/client`；`dist/ssr` 是 SPA 用不到的 Worker 產物，裡面的 `.dev.vars` 是 `.env` 的副本，不能上傳。綁了自訂網域後 `workers.dev` 網址會停用。
+
+新網址要登記在：Supabase Auth 的 Site URL 和 Redirect URLs（`https://ivy-cudgel.com/**`，結尾 `/**` 不能省）、日曆 OAuth client 的 Authorised redirect URIs（`https://ivy-cudgel.com/`，結尾斜線要有）。舊的 `/app/` 網址在 #57 下架前兩邊都留著。

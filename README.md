@@ -135,3 +135,16 @@ API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出�
 1. Settings → Pages → Build and deployment → Source 改成 **GitHub Actions**（原本是 Deploy from a branch `main:/docs`）。
 2. Supabase dashboard → Authentication → URL Configuration → Redirect URLs 加上 `https://klay376014.github.io/what-to-eat/app/**`（結尾 `/**` 不能省，原因見上面「登入」第 3 點）。要讓正式網址當預設的話，Site URL 也改成 `https://klay376014.github.io/what-to-eat/app/`。
 3. 部署後實測：Google 登入後回到 app、建立旅程、用無痕視窗開邀請連結會看到邀請畫面。
+
+## 部署（Cloudflare，Void，#54）
+
+app 正在搬到 Cloudflare（`https://ivy-cudgel.com`，Worker `what-to-eat`），和上面的 GitHub Pages 並行。#55 之前要手動部署，在 `apps/web` 跑：
+
+```sh
+vp exec void connect --platform cloudflare   # 第一次：瀏覽器登入並選帳號
+set -a; . ./.env; set +a                     # VITE_SUPABASE_URL、VITE_SUPABASE_PUBLISHABLE_KEY
+export VITE_GOOGLE_CALENDAR_CLIENT_ID="$(gh variable get GOOGLE_CALENDAR_CLIENT_ID)"
+vp exec void deploy
+```
+
+`VITE_*` 只從 shell 讀：Void 的 build 不會用 `.env` 裡的前端值，所以上面要先 export。`void.config.ts` 讓 Void 只上傳 `dist/client`；`dist/ssr` 是 SPA 用不到的 Worker 產物，裡面的 `.dev.vars` 是 `.env` 的副本，不能上傳。綁了自訂網域後 `workers.dev` 網址會停用。Supabase Auth、Google OAuth 和 `APP_URL` 改指向新網址是 #56。

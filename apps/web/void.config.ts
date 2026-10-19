@@ -5,4 +5,15 @@ export default defineConfig({
   worker: {
     compatibility_date: "2026-02-24",
   },
+  inference: {
+    appType: "spa",
+    // voidPlugin() builds the site into dist/client and a Worker this SPA
+    // does not use into dist/ssr. Uploading all of dist would publish
+    // dist/ssr (including .dev.vars, a copy of .env) and miss index.html.
+    outputDir: "dist/client",
+  },
+  cloudflare: {
+    // Without it the Worker would take the package name, "web".
+    name: "what-to-eat",
+  },
 });

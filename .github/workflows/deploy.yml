@@ -1,8 +1,14 @@
 name: Deploy
 
-# Publishes one GitHub Pages site: the Jekyll pages in docs/ at the root (the
-# homepage and privacy policy Google's OAuth consent screen links to, so their
-# URLs must not move) and apps/web under app/.
+# Deploys main to two places:
+#
+# - GitHub Pages: the Jekyll pages in docs/ at the root (the homepage and
+#   privacy policy Google's OAuth consent screen links to, so their URLs must
+#   not move) and, until #57 retires it, the old copy of apps/web under app/.
+# - Cloudflare: apps/web at https://eat.ivy-cudgel.com, through `void deploy`
+#   (#55). The Worker, account and domain are pinned in apps/web/void.lock.json.
+#
+# The two deploy independently: one failing does not stop the other.
 #
 # It deploys only main's head, and only once CI has passed for it: it waits on
 # the CI run of a push to main rather than repeating its checks. A manual run
@@ -20,7 +26,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: pages
+  group: deploy
   # A half-finished deploy is worse than a queued one.
   cancel-in-progress: false
 
@@ -172,3 +178,59 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  cloudflare:
+    name: Deploy the app to Cloudflare
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    environment:
+      name: cloudflare
+      url: https://eat.ivy-cudgel.com/
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+
+      - uses: voidzero-dev/setup-vp@3754dd7dbdb32bd8f6d28b6043de13ad3a75f21f # v1.21.1
+        with:
+          node-version-file: .nvmrc
+          cache: true
+
+      # Void's build reads VITE_* values only from the shell, never from a
+      # .env file, so they are set here as for the Pages build.
+      - name: Deploy with Void
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # The account's workers.dev subdomain. Void needs it to check a new
+          # version is ready, since the custom domain turned the Worker's own
+          # workers.dev and preview URLs off. Not a secret.
+          CLOUDFLARE_WORKERS_SUBDOMAIN: pokekit
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VITE_GOOGLE_CALENDAR_CLIENT_ID: ${{ vars.GOOGLE_CALENDAR_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -n "${CLOUDFLARE_API_TOKEN:-}" ] || missing+=(CLOUDFLARE_API_TOKEN)
+          [ -n "${SUPABASE_PROJECT_REF:-}" ] || missing+=(SUPABASE_PROJECT_REF)
+          [ -n "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ] || missing+=(SUPABASE_PUBLISHABLE_KEY)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            {
+              echo "## :x: Not deployed to Cloudflare"
+              echo
+              echo "Missing repository secret(s): \`${missing[*]}\`."
+              echo "Add them under Settings > Secrets and variables > Actions."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Missing repository secret(s): ${missing[*]}"
+            exit 1
+          fi
+
+          VITE_SUPABASE_URL="https://${SUPABASE_PROJECT_REF}.supabase.co" \
+            vp exec void deploy --platform cloudflare

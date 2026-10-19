@@ -111,14 +111,15 @@ API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出�
 
 - `.github/workflows/ci.yml`：PR 與 push 到 `main` 時跑 `vp check`、`vp run -r test`，並在 runner 上啟動本機 Supabase、套用 migrations、跑 `supabase test db`（pgTAP，測試放在 `supabase/tests/database/*.test.sql`）。本機沒有 Docker，資料庫測試只在 CI 跑。
 - `.github/workflows/keepalive.yml`：每 3 天（也可手動觸發）呼叫一次 hosted 專案的 `public.keepalive()`，避免免費方案閒置被暫停。結果寫在該次 run 的 Summary。
-- `.github/workflows/deploy.yml`：push 到 `main` 的 CI 通過後（也可手動觸發），把 `docs/`（Jekyll）和 `apps/web` 建成同一個 GitHub Pages 網站並部署。
+- `.github/workflows/deploy.yml`：push 到 `main` 的 CI 通過後（也可手動觸發），把 `docs/`（Jekyll）和 `apps/web` 建成同一個 GitHub Pages 網站並部署，同時用 `void deploy` 把 `apps/web` 部署到 Cloudflare。兩邊各自獨立，一邊失敗不影響另一邊。
 
 需要的 repository secrets（Settings → Secrets and variables → Actions）：
 
-| Secret                     | 用途                                                                       |
-| -------------------------- | -------------------------------------------------------------------------- |
-| `SUPABASE_PROJECT_REF`     | hosted 專案的 ref（與 `.env` 相同），keepalive 與部署用                    |
-| `SUPABASE_PUBLISHABLE_KEY` | publishable key（Project Settings → API Keys），keepalive 與部署時編進前端 |
+| Secret                     | 用途                                                                                           |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `SUPABASE_PROJECT_REF`     | hosted 專案的 ref（與 `.env` 相同），keepalive 與部署用                                        |
+| `SUPABASE_PUBLISHABLE_KEY` | publishable key（Project Settings → API Keys），keepalive 與部署時編進前端                     |
+| `CLOUDFLARE_API_TOKEN`     | 部署到 Cloudflare 用；「Edit Cloudflare Workers」範本，限定 app 的帳號和 `ivy-cudgel.com` zone |
 
 ## 部署（GitHub Pages）
 
@@ -136,9 +137,9 @@ API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出�
 2. Supabase dashboard → Authentication → URL Configuration → Redirect URLs 加上 `https://klay376014.github.io/what-to-eat/app/**`（結尾 `/**` 不能省，原因見上面「登入」第 3 點）。要讓正式網址當預設的話，Site URL 也改成 `https://klay376014.github.io/what-to-eat/app/`。
 3. 部署後實測：Google 登入後回到 app、建立旅程、用無痕視窗開邀請連結會看到邀請畫面。
 
-## 部署（Cloudflare，Void，#54）
+## 部署（Cloudflare，Void）
 
-app 正在搬到 Cloudflare（`https://eat.ivy-cudgel.com`，Worker `what-to-eat`；裸網域 `ivy-cudgel.com` 留給其他網站用），和上面的 GitHub Pages 並行。#55 之前要手動部署，在 `apps/web` 跑：
+app 正在搬到 Cloudflare（`https://eat.ivy-cudgel.com`，Worker `what-to-eat`；裸網域 `ivy-cudgel.com` 留給其他網站用），和上面的 GitHub Pages 並行。`deploy.yml` 會在 push 到 `main` 的 CI 通過後自動部署（#55）。要手動部署的話，在 `apps/web` 跑：
 
 ```sh
 vp exec void connect --platform cloudflare   # 第一次：瀏覽器登入並選帳號

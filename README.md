@@ -148,6 +148,6 @@ export VITE_GOOGLE_CALENDAR_CLIENT_ID="$(gh variable get GOOGLE_CALENDAR_CLIENT_
 vp exec void deploy
 ```
 
-`VITE_*` 只從 shell 讀：Void 的 build 不會用 `.env` 裡的前端值，所以上面要先 export。`void.config.ts` 讓 Void 只上傳 `dist/client`；`dist/ssr` 是 SPA 用不到的 Worker 產物，裡面的 `.dev.vars` 是 `.env` 的副本，不能上傳。綁了自訂網域後 `workers.dev` 網址會停用。
+`VITE_*` 只從 shell 讀：Void 的 build 不會用 `.env` 裡的前端值，所以上面要先 export。`void.config.ts` 讓 Void 只上傳 `dist/client`；`dist/ssr` 是 SPA 用不到的 Worker 產物，裡面的 `.dev.vars` 是 `.env` 的副本，不能上傳。`workers.dev` 主網址關閉，但每個版本的預覽網址（`<版本>-what-to-eat.pokekit.workers.dev`）保持開啟：Void 在切流量前會到那裡確認新版本可用，若改走 `eat.ivy-cudgel.com`，GitHub Actions 的 IP 會被網域的 bot 防護擋下。
 
 新網址要登記在：Supabase Auth 的 Site URL 和 Redirect URLs（`https://eat.ivy-cudgel.com/**`，結尾 `/**` 不能省）、日曆 OAuth client 的 Authorised redirect URIs（`https://eat.ivy-cudgel.com/`，結尾斜線要有）。舊的 `/app/` 網址在 #57 下架前兩邊都留著。

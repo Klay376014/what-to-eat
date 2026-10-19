@@ -1,7 +1,9 @@
 {
   "version": 1,
   "source": {
-    "name": "what-to-eat"
+    "name": "what-to-eat",
+    "workers_dev": false,
+    "preview_urls": true
   },
   "resolved": {
     "name": "what-to-eat",
@@ -12,7 +14,9 @@
         "pattern": "eat.ivy-cudgel.com",
         "custom_domain": true
       }
-    ]
+    ],
+    "workers_dev": false,
+    "preview_urls": true
   },
-  "text": "// void:published-traffic:v1:eyJ3b3JrZXJzX2RldiI6ZmFsc2UsInByZXZpZXdfdXJscyI6ZmFsc2UsInJvdXRlcyI6W3sicGF0dGVybiI6ImVhdC5pdnktY3VkZ2VsLmNvbSIsImN1c3RvbV9kb21haW4iOnRydWV9XX0\n{\n  \"name\": \"what-to-eat\",\n  \"account_id\": \"1311a39ab2568e62a8000781f8b513a4\",\n  \"compatibility_date\": \"2026-02-24\",\n  \"routes\": [\n    {\n      \"pattern\": \"eat.ivy-cudgel.com\",\n      \"custom_domain\": true\n    }\n  ]\n}\n"
+  "text": "// void:published-traffic:v1:eyJ3b3JrZXJzX2RldiI6ZmFsc2UsInByZXZpZXdfdXJscyI6dHJ1ZSwicm91dGVzIjpbeyJwYXR0ZXJuIjoiZWF0Lml2eS1jdWRnZWwuY29tIiwiY3VzdG9tX2RvbWFpbiI6dHJ1ZX1dfQ\n{\n  \"name\": \"what-to-eat\",\n  \"account_id\": \"1311a39ab2568e62a8000781f8b513a4\",\n  \"compatibility_date\": \"2026-02-24\",\n  \"routes\": [\n    {\n      \"pattern\": \"eat.ivy-cudgel.com\",\n      \"custom_domain\": true\n    }\n  ],\n  \"workers_dev\": false,\n  \"preview_urls\": true\n}\n"
 }

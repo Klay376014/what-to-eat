@@ -20,14 +20,14 @@
 //                   of a request to Resend; never logged or returned.
 //   NOTIFY_SECRET   the same value as Vault's notify_secret.
 //   EMAIL_FROM      optional; "What to eat <notify@mail.ivy-cudgel.com>".
-//   APP_URL         optional; "https://klay376014.github.io/what-to-eat/app/".
+//   APP_URL         optional; "https://eat.ivy-cudgel.com/".
 
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../../../apps/web/src/types/database.ts";
 import { decisionPass, deliverPass, digestPass, nudgePass, type NotifyConfig } from "./run.ts";
 
 const DEFAULT_FROM = "What to eat <notify@mail.ivy-cudgel.com>";
-const DEFAULT_APP_URL = "https://klay376014.github.io/what-to-eat/app/";
+const DEFAULT_APP_URL = "https://eat.ivy-cudgel.com/";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",

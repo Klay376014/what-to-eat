@@ -207,9 +207,10 @@ jobs:
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          # The account's workers.dev subdomain. Void needs it to check a new
-          # version is ready, since the custom domain turned the Worker's own
-          # workers.dev and preview URLs off. Not a secret.
+          # The account's workers.dev subdomain, where each new version's
+          # preview URL lives. Void checks the version is ready there before
+          # sending it traffic (void.config.ts keeps preview URLs on for this).
+          # Not a secret.
           CLOUDFLARE_WORKERS_SUBDOMAIN: pokekit
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}

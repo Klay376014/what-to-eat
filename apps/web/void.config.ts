@@ -15,5 +15,11 @@ export default defineConfig({
   cloudflare: {
     // Without it the Worker would take the package name, "web".
     name: "what-to-eat",
+    // The app is served at its custom domain (void.lock.json), not workers.dev.
+    workers_dev: false,
+    // Void checks each new version at its preview URL before sending traffic
+    // to it. Without one it checks through eat.ivy-cudgel.com, whose zone
+    // challenges GitHub Actions' datacenter IPs, and the deploy stops there.
+    preview_urls: true,
   },
 });

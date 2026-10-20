@@ -34,7 +34,7 @@ vp run ready      # check + test + build
 
 1. Google Cloud（和登入同一個專案即可）→ APIs & Services → Library：啟用 **Google Calendar API**。
 2. Google Auth Platform → Data Access：加上 `https://www.googleapis.com/auth/calendar.app.created`。不要加更寬的 Calendar scope：這個 scope 不是 sensitive，所以同意畫面沒有「未驗證的應用程式」警告（#2 實測）；換成更寬的會讓警告回來。
-3. Clients → 另建一個 **Web application** client 專給日曆用（不要和登入的共用）。Authorised redirect URIs 填 app 的網址本身：`http://localhost:5173/`、`https://eat.ivy-cudgel.com/` 和 `https://klay376014.github.io/what-to-eat/app/`（舊網址，#57 下架前保留；結尾斜線要有，app 送出的就是 `origin + pathname`）。
+3. Clients → 另建一個 **Web application** client 專給日曆用（不要和登入的共用）。Authorised redirect URIs 填 app 的網址本身：`http://localhost:5173/` 和 `https://eat.ivy-cudgel.com/`（結尾斜線要有，app 送出的就是 `origin + pathname`）。
 4. `apps/web/.env` 填 `VITE_GOOGLE_CALENDAR_CLIENT_ID`（client ID 是公開的）；GitHub → Settings → Secrets and variables → Actions → **Variables** 加 `GOOGLE_CALENDAR_CLIENT_ID`，部署時編進前端。沒設的話 app 照常運作，只是按「Connect Google Calendar」會說還沒設定。
 5. Edge Function 的 secrets（client secret 只放這裡）：
 
@@ -111,7 +111,7 @@ API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出�
 
 - `.github/workflows/ci.yml`：PR 與 push 到 `main` 時跑 `vp check`、`vp run -r test`，並在 runner 上啟動本機 Supabase、套用 migrations、跑 `supabase test db`（pgTAP，測試放在 `supabase/tests/database/*.test.sql`）。本機沒有 Docker，資料庫測試只在 CI 跑。
 - `.github/workflows/keepalive.yml`：每 3 天（也可手動觸發）呼叫一次 hosted 專案的 `public.keepalive()`，避免免費方案閒置被暫停。結果寫在該次 run 的 Summary。
-- `.github/workflows/deploy.yml`：push 到 `main` 的 CI 通過後（也可手動觸發），把 `docs/`（Jekyll）和 `apps/web` 建成同一個 GitHub Pages 網站並部署，同時用 `void deploy` 把 `apps/web` 部署到 Cloudflare。兩邊各自獨立，一邊失敗不影響另一邊。
+- `.github/workflows/deploy.yml`：push 到 `main` 的 CI 通過後（也可手動觸發），把 `docs/`（Jekyll）部署到 GitHub Pages，同時用 `void deploy` 把 `apps/web` 部署到 Cloudflare。兩邊各自獨立，一邊失敗不影響另一邊。
 
 需要的 repository secrets（Settings → Secrets and variables → Actions）：
 
@@ -127,19 +127,12 @@ API key 只放在 Edge Function 的 secrets，不會到瀏覽器，也不會出�
 | ------------------------------------------------------- | ------------------------------- |
 | `https://klay376014.github.io/what-to-eat/`             | 首頁（`docs/index.md`）         |
 | `https://klay376014.github.io/what-to-eat/privacy.html` | 隱私權政策（`docs/privacy.md`） |
-| `https://klay376014.github.io/what-to-eat/app/`         | app（`apps/web`）               |
 
-首頁與隱私權政策是 Google OAuth 同意畫面登記的網址，不能搬。`deploy.yml` 先用 `vp build --base=<Pages 的 base path>/app/`（base path 由 `actions/configure-pages` 取得，目前是 `/what-to-eat`）建 app，再只把輸出的 `client/` 複製到 `docs/app/`（已 gitignore；`voidPlugin()` 會把輸出拆成靜態的 `client/` 和 Pages 用不到的 Worker `ssr/`），再讓 Jekyll 建整個 `docs/`，一起上傳。只部署 `main` 最新且 CI 通過的 commit：CI 跑完順序顛倒時，舊 commit 會跳過、由新 commit 的那次部署；手動觸發也做同樣檢查。app 沒有前端路由，狀態都在 query 參數裡，所以子路徑不需要 404 fallback；本機 `vp run dev` 仍然在 `/`。
-
-第一次部署前要手動做一次：
-
-1. Settings → Pages → Build and deployment → Source 改成 **GitHub Actions**（原本是 Deploy from a branch `main:/docs`）。
-2. Supabase dashboard → Authentication → URL Configuration → Redirect URLs 加上 `https://klay376014.github.io/what-to-eat/app/**`（結尾 `/**` 不能省，原因見上面「登入」第 3 點）。要讓正式網址當預設的話，Site URL 也改成 `https://klay376014.github.io/what-to-eat/app/`。
-3. 部署後實測：Google 登入後回到 app、建立旅程、用無痕視窗開邀請連結會看到邀請畫面。
+首頁與隱私權政策是 Google OAuth 同意畫面登記的網址，不能搬。app 原本也放在 `/app/`，搬到 Cloudflare 後已下架（#57），舊網址現在是 404。只部署 `main` 最新且 CI 通過的 commit：CI 跑完順序顛倒時，舊 commit 會跳過、由新 commit 的那次部署；手動觸發也做同樣檢查。Settings → Pages → Build and deployment → Source 要設成 **GitHub Actions**。
 
 ## 部署（Cloudflare，Void）
 
-app 正在搬到 Cloudflare（`https://eat.ivy-cudgel.com`，Worker `what-to-eat`；裸網域 `ivy-cudgel.com` 留給其他網站用），和上面的 GitHub Pages 並行。`deploy.yml` 會在 push 到 `main` 的 CI 通過後自動部署（#55）。要手動部署的話，在 `apps/web` 跑：
+app 部署在 Cloudflare（`https://eat.ivy-cudgel.com`，Worker `what-to-eat`；裸網域 `ivy-cudgel.com` 留給其他網站用）。`deploy.yml` 會在 push 到 `main` 的 CI 通過後自動部署（#55）。要手動部署的話，在 `apps/web` 跑：
 
 ```sh
 vp exec void connect --platform cloudflare   # 第一次：瀏覽器登入並選帳號
@@ -150,4 +143,4 @@ vp exec void deploy
 
 `VITE_*` 只從 shell 讀：Void 的 build 不會用 `.env` 裡的前端值，所以上面要先 export。`void.config.ts` 讓 Void 只上傳 `dist/client`；`dist/ssr` 是 SPA 用不到的 Worker 產物，裡面的 `.dev.vars` 是 `.env` 的副本，不能上傳。`workers.dev` 主網址關閉，但每個版本的預覽網址（`<版本>-what-to-eat.pokekit.workers.dev`）保持開啟：Void 在切流量前會到那裡確認新版本可用，若改走 `eat.ivy-cudgel.com`，GitHub Actions 的 IP 會被網域的 bot 防護擋下。
 
-新網址要登記在：Supabase Auth 的 Site URL 和 Redirect URLs（`https://eat.ivy-cudgel.com/**`，結尾 `/**` 不能省）、日曆 OAuth client 的 Authorised redirect URIs（`https://eat.ivy-cudgel.com/`，結尾斜線要有）。舊的 `/app/` 網址在 #57 下架前兩邊都留著。
+新網址要登記在：Supabase Auth 的 Site URL 和 Redirect URLs（`https://eat.ivy-cudgel.com/**`，結尾 `/**` 不能省）、日曆 OAuth client 的 Authorised redirect URIs（`https://eat.ivy-cudgel.com/`，結尾斜線要有）。

@@ -2,9 +2,9 @@ name: Deploy
 
 # Deploys main to two places:
 #
-# - GitHub Pages: the Jekyll pages in docs/ at the root (the homepage and
-#   privacy policy Google's OAuth consent screen links to, so their URLs must
-#   not move) and, until #57 retires it, the old copy of apps/web under app/.
+# - GitHub Pages: the Jekyll pages in docs/ (the homepage and privacy policy
+#   Google's OAuth consent screen links to, so their URLs must not move). The
+#   old copy of apps/web under app/ was retired in #57.
 # - Cloudflare: apps/web at https://eat.ivy-cudgel.com, through `void deploy`
 #   (#55). The Worker, account and domain are pinned in apps/web/void.lock.json.
 #
@@ -87,14 +87,13 @@ jobs:
           echo "deploy=true" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build site
+    name: Build the docs site
     needs: gate
     if: needs.gate.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-      pages: read
     env:
       DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
     steps:
@@ -102,59 +101,6 @@ jobs:
         with:
           ref: ${{ env.DEPLOY_SHA }}
           persist-credentials: false
-
-      # The site's base path ("/what-to-eat"), so the app's base is not
-      # hard-coded to the repository name.
-      - id: pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-
-      - uses: voidzero-dev/setup-vp@3754dd7dbdb32bd8f6d28b6043de13ad3a75f21f # v1.21.1
-        with:
-          node-version-file: .nvmrc
-          cache: true
-
-      # The Supabase URL and publishable key are compiled into the bundle. The
-      # key is meant for browsers (RLS protects the data), but it still lives
-      # in secrets so the repo holds no project details.
-      - name: Build the app into docs/app
-        working-directory: apps/web
-        env:
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          # #12: the calendar's own OAuth client (public, like any client ID).
-          # Optional: without it the app runs, and connecting a calendar says
-          # it isn't set up.
-          VITE_GOOGLE_CALENDAR_CLIENT_ID: ${{ vars.GOOGLE_CALENDAR_CLIENT_ID }}
-          BASE: ${{ steps.pages.outputs.base_path }}/app/
-        run: |
-          set -euo pipefail
-
-          missing=()
-          [ -n "${SUPABASE_PROJECT_REF:-}" ] || missing+=(SUPABASE_PROJECT_REF)
-          [ -n "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ] || missing+=(SUPABASE_PUBLISHABLE_KEY)
-          if [ "${#missing[@]}" -gt 0 ]; then
-            {
-              echo "## :x: Not deployed"
-              echo
-              echo "Missing repository secret(s): \`${missing[*]}\`."
-              echo "Add them under Settings > Secrets and variables > Actions."
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::Missing repository secret(s): ${missing[*]}"
-            exit 1
-          fi
-
-          # Direct `vp build`, not `vp run`: a task would run in a clean
-          # environment and could replay a build made with other values.
-          # Jekyll copies docs/app through as static files (nothing in it has
-          # front matter), which spares writing into its root-owned output.
-          # With voidPlugin() (#53), --outDir holds the static site under
-          # client/ (the Cloudflare Worker build goes to dist/ssr/, which
-          # Pages has no use for), so only client/ is copied in.
-          out="${RUNNER_TEMP}/web"
-          VITE_SUPABASE_URL="https://${SUPABASE_PROJECT_REF}.supabase.co" \
-            vp build --base="$BASE" --outDir "$out" --emptyOutDir
-          mkdir -p ../../docs/app
-          cp -R "$out/client/." ../../docs/app/
 
       - uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
         with:
@@ -174,7 +120,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}app/
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
@@ -202,7 +148,10 @@ jobs:
           cache: true
 
       # Void's build reads VITE_* values only from the shell, never from a
-      # .env file, so they are set here as for the Pages build.
+      # .env file, so they are set here. The Supabase URL and publishable key
+      # are compiled into the bundle. The key is meant for browsers (RLS
+      # protects the data), but it still lives in secrets so the repo holds
+      # no project details.
       - name: Deploy with Void
         working-directory: apps/web
         env:
@@ -214,6 +163,9 @@ jobs:
           CLOUDFLARE_WORKERS_SUBDOMAIN: pokekit
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          # #12: the calendar's own OAuth client (public, like any client ID).
+          # Optional: without it the app runs, and connecting a calendar says
+          # it isn't set up.
           VITE_GOOGLE_CALENDAR_CLIENT_ID: ${{ vars.GOOGLE_CALENDAR_CLIENT_ID }}
         run: |
           set -euo pipefail
